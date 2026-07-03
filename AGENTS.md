@@ -23,10 +23,13 @@ the full target set across OSes with `-Pfilter=linuxX64|windowsX64|macos`.
 This is a single-module Kotlin Multiplatform project rooted at the top of the repo:
 
 - `src/commonMain/` — all production logic:
+  - `Tacita.kt` — the only public entry point: `Tacita.downloadPodcast(...): Flow<DownloadState>`
+    (plus the public `DownloadState` sealed class and `FileAlreadyExistsException`);
+    everything below is `internal`
   - `http/Downloader.kt` — episode downloads via ktor + okio, progress as a `Flow<Float>`
   - `audio/AdCutter.kt` — lossless removal of dynamically-injected ads by diffing two copies
   - `audio/Mp3SegmentParser.kt` — splits an mp3 stream into its independently-encoded segments
-  - `audio/Id3ChapterShifter.kt` — (internal) shifts ID3 CHAP frames to account for cut ranges
+  - `audio/Id3ChapterShifter.kt` — shifts ID3 CHAP frames to account for cut ranges
 - `src/jvmMain/` + `src/nativeMain/` — a single internal expect/actual (`systemFileSystem`),
   needed because okio has no common declaration of `FileSystem.SYSTEM`
 - `src/jvmTest/` — tests (use real mp3 fixtures in `src/jvmTest/resources/audio/`)
@@ -47,6 +50,9 @@ This is a single-module Kotlin Multiplatform project rooted at the top of the re
   expect/actual and the `ktor-client-okhttp` engine dependency in `jvmMain`. Don't add
   platform-specific logic. Native-portability gotchas already handled: `Dispatchers.IO` needs
   `import kotlinx.coroutines.IO`, and closing okio types in common code needs `import okio.use`.
+- **Single public entry point**: only `Tacita`, `DownloadState` and `FileAlreadyExistsException`
+  are public; keep new functionality behind `Tacita` and keep implementation types `internal`
+  (tests can still reach them — test compilations associate with main)
 - **Explicit API**: Every public function, class, interface, and typealias must have an explicit
   `public` modifier
 - **User-agent is deliberate**: the default UA string pins the ad-serving tier; don't change it

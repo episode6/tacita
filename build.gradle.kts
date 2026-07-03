@@ -29,5 +29,10 @@ kotlin {
         implementation(libs.ktor.client.okhttp)
       }
     }
+    matching { it.name == "jvmTest" }.configureEach {
+      dependencies {
+        implementation(libs.ktor.client.mock)
+      }
+    }
   }
 }

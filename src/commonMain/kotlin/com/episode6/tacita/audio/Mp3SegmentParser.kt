@@ -9,19 +9,19 @@ package com.episode6.tacita.audio
  * high fraction of filler bytes — real audio frames are high-entropy, so the combination
  * doesn't occur in them by chance.
  */
-public object Mp3SegmentParser {
+internal object Mp3SegmentParser {
 
-  public data class Segment(
-    public val startByte: Int,
-    public val endByte: Int, // exclusive
-    public val startSeconds: Double,
-    public val durationSeconds: Double,
+  data class Segment(
+    val startByte: Int,
+    val endByte: Int, // exclusive
+    val startSeconds: Double,
+    val durationSeconds: Double,
   )
 
-  public data class Scan(
-    public val leadingBytes: Int, // bytes before the first frame (ID3v2 header etc)
-    public val segments: List<Segment>,
-    public val totalDurationSeconds: Double,
+  data class Scan(
+    val leadingBytes: Int, // bytes before the first frame (ID3v2 header etc)
+    val segments: List<Segment>,
+    val totalDurationSeconds: Double,
   )
 
   internal data class Frame(
@@ -30,7 +30,7 @@ public object Mp3SegmentParser {
     val durationSeconds: Double,
   )
 
-  public fun scan(data: ByteArray): Scan {
+  fun scan(data: ByteArray): Scan {
     val firstFrame = findNextFrame(data, id3v2Size(data)) ?: return Scan(data.size, emptyList(), 0.0)
     var seconds = 0.0
     val bounds = mutableListOf(Boundary(byte = firstFrame, seconds = 0.0))

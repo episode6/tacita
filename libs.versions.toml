@@ -15,6 +15,7 @@ assertk-core = "0.28.1"
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor-core" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor-core" }
 okio-core = { module = "com.squareup.okio:okio", version.ref = "okio-core" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor-core" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 

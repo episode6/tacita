@@ -27,25 +27,25 @@ import okio.Path.Companion.toPath
  * untouched. An ad served identically in both copies survives: the failure mode is
  * always keeping too much, never cutting material that belongs to the episode.
  */
-public class AdCutter(
+internal class AdCutter(
   private val fileSystem: FileSystem = systemFileSystem,
   private val log: (String) -> Unit = {},
 ) {
 
-  public data class Config(
+  data class Config(
     /** Never remove more than this fraction of the total duration. */
-    public val maxCutFraction: Double = 0.25,
+    val maxCutFraction: Double = 0.25,
     /** The two copies must agree on at least this fraction of the primary copy's duration. */
-    public val minMatchFraction: Double = 0.5,
+    val minMatchFraction: Double = 0.5,
   )
 
-  public sealed class Result {
-    public object NoAdsFound : Result()
-    public data class AdsCut(public val adBreaksRemoved: Int, public val secondsRemoved: Double) : Result()
-    public data class Skipped(public val reason: String) : Result()
+  sealed class Result {
+    object NoAdsFound : Result()
+    data class AdsCut(val adBreaksRemoved: Int, val secondsRemoved: Double) : Result()
+    data class Skipped(val reason: String) : Result()
   }
 
-  public suspend fun cutAds(file: Path, referenceFile: Path, config: Config = Config()): Result =
+  suspend fun cutAds(file: Path, referenceFile: Path, config: Config = Config()): Result =
     withContext(Dispatchers.IO) {
       val result = cut(file, referenceFile, config)
       log("AdCutter: ${file.name}: $result")
