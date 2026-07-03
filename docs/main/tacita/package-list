@@ -1,41 +1,15 @@
 $dokka.format:html-v1
 $dokka.linkExtension:html
-$dokka.location:com.episode6.tacita.audio////PointingToDeclaration/tacita/com.episode6.tacita.audio/index.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Config///PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-config/index.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Config/Config/#kotlin.Double#kotlin.Double/PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-config/-config.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Config/maxCutFraction/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-config/max-cut-fraction.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Config/minMatchFraction/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-config/min-match-fraction.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Result.AdsCut///PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-result/-ads-cut/index.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Result.AdsCut/AdsCut/#kotlin.Int#kotlin.Double/PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-result/-ads-cut/-ads-cut.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Result.AdsCut/adBreaksRemoved/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-result/-ads-cut/ad-breaks-removed.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Result.AdsCut/secondsRemoved/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-result/-ads-cut/seconds-removed.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Result.NoAdsFound///PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-result/-no-ads-found/index.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Result.Skipped///PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-result/-skipped/index.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Result.Skipped/Skipped/#kotlin.String/PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-result/-skipped/-skipped.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Result.Skipped/reason/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-result/-skipped/reason.html
-$dokka.location:com.episode6.tacita.audio/AdCutter.Result///PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-result/index.html
-$dokka.location:com.episode6.tacita.audio/AdCutter///PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/index.html
-$dokka.location:com.episode6.tacita.audio/AdCutter/AdCutter/#okio.FileSystem#kotlin.Function1[kotlin.String,kotlin.Unit]/PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/-ad-cutter.html
-$dokka.location:com.episode6.tacita.audio/AdCutter/cutAds/#okio.Path#okio.Path#com.episode6.tacita.audio.AdCutter.Config/PointingToDeclaration/tacita/com.episode6.tacita.audio/-ad-cutter/cut-ads.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Scan///PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-scan/index.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Scan/Scan/#kotlin.Int#kotlin.collections.List[com.episode6.tacita.audio.Mp3SegmentParser.Segment]#kotlin.Double/PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-scan/-scan.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Scan/leadingBytes/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-scan/leading-bytes.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Scan/segments/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-scan/segments.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Scan/totalDurationSeconds/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-scan/total-duration-seconds.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Segment///PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-segment/index.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Segment/Segment/#kotlin.Int#kotlin.Int#kotlin.Double#kotlin.Double/PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-segment/-segment.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Segment/durationSeconds/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-segment/duration-seconds.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Segment/endByte/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-segment/end-byte.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Segment/startByte/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-segment/start-byte.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser.Segment/startSeconds/#/PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/-segment/start-seconds.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser///PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/index.html
-$dokka.location:com.episode6.tacita.audio/Mp3SegmentParser/scan/#kotlin.ByteArray/PointingToDeclaration/tacita/com.episode6.tacita.audio/-mp3-segment-parser/scan.html
-$dokka.location:com.episode6.tacita.http////PointingToDeclaration/tacita/com.episode6.tacita.http/index.html
-$dokka.location:com.episode6.tacita.http/Downloader///PointingToDeclaration/tacita/com.episode6.tacita.http/-downloader/index.html
-$dokka.location:com.episode6.tacita.http/Downloader/Downloader/#io.ktor.client.HttpClient#okio.FileSystem#kotlin.String/PointingToDeclaration/tacita/com.episode6.tacita.http/-downloader/-downloader.html
-$dokka.location:com.episode6.tacita.http/Downloader/downloadFile/#kotlin.String#okio.Path#kotlin.Boolean/PointingToDeclaration/tacita/com.episode6.tacita.http/-downloader/download-file.html
-$dokka.location:com.episode6.tacita.http/Downloader/fetchString/#kotlin.String/PointingToDeclaration/tacita/com.episode6.tacita.http/-downloader/fetch-string.html
-$dokka.location:com.episode6.tacita.http/FileAlreadyExistsException///PointingToDeclaration/tacita/com.episode6.tacita.http/-file-already-exists-exception/index.html
-$dokka.location:com.episode6.tacita.http/FileAlreadyExistsException/FileAlreadyExistsException/#okio.Path/PointingToDeclaration/tacita/com.episode6.tacita.http/-file-already-exists-exception/-file-already-exists-exception.html
-com.episode6.tacita.audio
-com.episode6.tacita.http
+$dokka.location:com.episode6.tacita////PointingToDeclaration/tacita/com.episode6.tacita/index.html
+$dokka.location:com.episode6.tacita/DownloadState.Complete///PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-complete/index.html
+$dokka.location:com.episode6.tacita/DownloadState.CuttingAds///PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-cutting-ads/index.html
+$dokka.location:com.episode6.tacita/DownloadState.Downloading///PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-downloading/index.html
+$dokka.location:com.episode6.tacita/DownloadState.Downloading/Downloading/#okio.Path#kotlin.Float/PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-downloading/-downloading.html
+$dokka.location:com.episode6.tacita/DownloadState.Downloading/file/#/PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-downloading/file.html
+$dokka.location:com.episode6.tacita/DownloadState.Downloading/percentComplete/#/PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-downloading/percent-complete.html
+$dokka.location:com.episode6.tacita/DownloadState///PointingToDeclaration/tacita/com.episode6.tacita/-download-state/index.html
+$dokka.location:com.episode6.tacita/FileAlreadyExistsException///PointingToDeclaration/tacita/com.episode6.tacita/-file-already-exists-exception/index.html
+$dokka.location:com.episode6.tacita/FileAlreadyExistsException/FileAlreadyExistsException/#okio.Path/PointingToDeclaration/tacita/com.episode6.tacita/-file-already-exists-exception/-file-already-exists-exception.html
+$dokka.location:com.episode6.tacita/Tacita///PointingToDeclaration/tacita/com.episode6.tacita/-tacita/index.html
+$dokka.location:com.episode6.tacita/Tacita/downloadPodcast/#kotlin.String#okio.Path#okio.Path#kotlin.Boolean#kotlin.Boolean/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/download-podcast.html
+com.episode6.tacita
