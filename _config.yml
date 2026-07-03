@@ -1,0 +1,7 @@
+
+theme: jekyll-theme-cayman
+title: tacita
+description: A Kotlin Multiplatform library for downloading podcast episodes and cutting the injected ads out of them.
+version: 1.0.0-SNAPSHOT
+docsDir: https://episode6.github.io/tacita/docs/main
+kotlinVersion: 2.4.0
