@@ -1,0 +1,29 @@
+[versions]
+gradle-core = "9.5.1"
+kotlin-core = "2.4.0"
+dokka-core = "2.2.0"
+kotlinx-coroutines = "1.11.0"
+ktor-core = "3.5.1"
+okio-core = "3.17.0"
+
+# test utils
+junit5-core = "5.9.1"
+junit5-platform = "1.9.1"
+assertk-core = "0.28.1"
+
+[libraries]
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor-core" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor-core" }
+okio-core = { module = "com.squareup.okio:okio", version.ref = "okio-core" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
+
+# test utils
+junit5-core = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit5-core" }
+junit5-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit5-platform" }
+assertk-core = { module = "com.willowtreeapps.assertk:assertk", version.ref = "assertk-core" }
+assertk-jvm = { module = "com.willowtreeapps.assertk:assertk-jvm", version.ref = "assertk-core" }
+
+[plugins]
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin-core" }
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka-core" }
