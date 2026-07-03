@@ -18,51 +18,41 @@ dependencies {
 
 ### Usage
 
-**Download an episode (with progress)...**
+Tacita has a single entry point:
 
 ```kotlin
-val downloader = Downloader() // optionally pass your own HttpClient / FileSystem / user-agent
-
-downloader.downloadFile(url = episodeUrl, outputFile = "episode.mp3".toPath(), overwrite = true)
-  .collect { progress -> println("${(progress * 100).toInt()}%") }
-```
-
-<br/>
-
-**Cut the injected ads out of it...**
-
-Dynamic ad insertion varies per request, while the episode's real content is served as the same
-encoded bytes every time. Download the same episode twice and diff the copies: byte runs present in
-both are kept, byte runs unique to the primary copy are the injected ads. Cut edges are snapped to
-mp3 frame boundaries and ID3 chapter marks are shifted to match.
-
-```kotlin
-val adCutter = AdCutter()
-
-val result = adCutter.cutAds(file = "episode.mp3".toPath(), referenceFile = "reference.mp3".toPath())
-when (result) {
-  is AdCutter.Result.AdsCut     -> println("cut ${result.adBreaksRemoved} ad breaks (${result.secondsRemoved}s)")
-  is AdCutter.Result.NoAdsFound -> println("copies are identical, nothing injected")
-  is AdCutter.Result.Skipped    -> println("left untouched: ${result.reason}")
+Tacita.downloadPodcast(
+  url = episodeUrl,
+  outputFile = "episode.mp3".toPath(),
+  referenceFile = "episode.mp3.adref".toPath(),
+  overwrite = true,
+  cutAds = true,
+).collect { state ->
+  when (state) {
+    is DownloadState.Downloading -> println("${state.file.name}: ${(state.percentComplete * 100).toInt()}%")
+    is DownloadState.CuttingAds  -> println("cutting ads...")
+    is DownloadState.Complete    -> println("done!")
+  }
 }
 ```
 
-The failure mode is always keeping too much, never cutting material that belongs to the episode: if
-the copies don't largely agree (or a safety check fails) the file is left untouched.
+Dynamic ad insertion varies per request, while the episode's real content is served as the same
+encoded bytes every time. Tacita downloads the episode, downloads a second copy to
+`referenceFile`, and diffs them: byte runs present in both are kept, byte runs unique to the
+primary copy are the injected ads. Cut edges are snapped to mp3 frame boundaries (no re-encoding)
+and ID3 chapter marks are shifted to match. The failure mode is always keeping too much, never
+cutting material that belongs to the episode — if the copies don't largely agree (or a safety
+check fails) the file is left untouched.
+
+Back-to-back requests tend to receive identical fill, so a copy from an earlier session makes a
+far better reference than a fresh one: when `overwrite`-ing an existing `outputFile` it is
+promoted to become the reference, an existing `referenceFile` is reused instead of re-downloaded,
+and reference files are kept on disk for future runs.
 
 <br/>
 
-**Inspect the stitched segments of an mp3...**
-
-```kotlin
-val scan = Mp3SegmentParser.scan(bytes)
-scan.segments.forEach { println("segment at ${it.startSeconds}s (${it.durationSeconds}s)") }
-```
-
-<br/>
-
-**A note on user-agents:** ad servers stitch different fills per client tier keyed on user-agent.
-`Downloader` sends an explicit, configurable user-agent so the served bytes (and ad-cut behavior)
-stay stable across the two downloads.
+**A note on http engines:** the JVM artifact ships with ktor's okhttp engine included. On other
+platforms, add any [ktor client engine](https://ktor.io/docs/client-engines.html) to your build
+and it will be picked up automatically.
 
 {% include readme_index.html %}
