@@ -1,9 +1,10 @@
 package com.episode6.tacita.audio
 
+import assertk.assertThat
+import assertk.assertions.containsExactly
+import assertk.assertions.isEqualTo
 import com.episode6.tacita.audio.Id3ChapterShifter.CutRange
 import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
 
 class Id3ChapterShifterTest {
 
@@ -18,7 +19,7 @@ class Id3ChapterShifterTest {
 
     val chapters = parseChapterTimes(shifter.shift(id3, listOf(cut)))
 
-    assertEquals(listOf(0L to 5_000L, 7_000L to 11_000L), chapters)
+    assertThat(chapters).containsExactly(0L to 5_000L, 7_000L to 11_000L)
   }
 
   @Test fun `shifts chapters after the cut in a v2_4 tag`() {
@@ -27,7 +28,7 @@ class Id3ChapterShifterTest {
 
     val chapters = parseChapterTimes(shifter.shift(id3, listOf(cut)))
 
-    assertEquals(listOf(0L to 5_000L, 7_000L to 11_000L), chapters)
+    assertThat(chapters).containsExactly(0L to 5_000L, 7_000L to 11_000L)
   }
 
   @Test fun `clamps a chapter overlapping the cut range to the cut point`() {
@@ -35,7 +36,7 @@ class Id3ChapterShifterTest {
 
     val chapters = parseChapterTimes(shifter.shift(id3, listOf(cut)))
 
-    assertEquals(listOf(5_000L to 7_000L), chapters)
+    assertThat(chapters).containsExactly(5_000L to 7_000L)
   }
 
   @Test fun `collapses a chapter entirely inside the cut range`() {
@@ -43,7 +44,7 @@ class Id3ChapterShifterTest {
 
     val chapters = parseChapterTimes(shifter.shift(id3, listOf(cut)))
 
-    assertEquals(listOf(5_000L to 5_000L), chapters)
+    assertThat(chapters).containsExactly(5_000L to 5_000L)
   }
 
   @Test fun `accumulates multiple cuts before a chapter`() {
@@ -55,7 +56,7 @@ class Id3ChapterShifterTest {
 
     val chapters = parseChapterTimes(shifter.shift(id3, cuts))
 
-    assertEquals(listOf(6_000L to 10_000L), chapters)
+    assertThat(chapters).containsExactly(6_000L to 10_000L)
   }
 
   @Test fun `shifts real byte offsets by the bytes cut before them`() {
@@ -67,7 +68,7 @@ class Id3ChapterShifterTest {
 
     val offsets = parseChapterOffsets(shifter.shift(id3, listOf(cut)))
 
-    assertEquals(listOf(500L to 9_000L, 20_000L to 50_000L), offsets)
+    assertThat(offsets).containsExactly(500L to 9_000L, 20_000L to 50_000L)
   }
 
   @Test fun `leaves the no-offset sentinel untouched`() {
@@ -75,31 +76,31 @@ class Id3ChapterShifterTest {
 
     val offsets = parseChapterOffsets(shifter.shift(id3, listOf(cut)))
 
-    assertEquals(listOf(NO_OFFSET to NO_OFFSET), offsets)
+    assertThat(offsets).containsExactly(NO_OFFSET to NO_OFFSET)
   }
 
   @Test fun `bails out on unsynchronised tags`() {
     val id3 = id3(version = 3, chap(id = "ch0", fromMs = 10_000, toMs = 14_000)).apply { this[5] = 0x80.toByte() }
 
-    assertContentEquals(id3, shifter.shift(id3, listOf(cut)))
+    assertThat(shifter.shift(id3, listOf(cut))).isEqualTo(id3)
   }
 
   @Test fun `bails out on tags with an extended header`() {
     val id3 = id3(version = 3, chap(id = "ch0", fromMs = 10_000, toMs = 14_000)).apply { this[5] = 0x40.toByte() }
 
-    assertContentEquals(id3, shifter.shift(id3, listOf(cut)))
+    assertThat(shifter.shift(id3, listOf(cut))).isEqualTo(id3)
   }
 
   @Test fun `bails out on unsupported id3 versions`() {
     val id3 = id3(version = 2, chap(id = "ch0", fromMs = 10_000, toMs = 14_000))
 
-    assertContentEquals(id3, shifter.shift(id3, listOf(cut)))
+    assertThat(shifter.shift(id3, listOf(cut))).isEqualTo(id3)
   }
 
   @Test fun `bails out on non-id3 leading bytes`() {
     val notId3 = ByteArray(64) { it.toByte() }
 
-    assertContentEquals(notId3, shifter.shift(notId3, listOf(cut)))
+    assertThat(shifter.shift(notId3, listOf(cut))).isEqualTo(notId3)
   }
 
   @Test fun `skips CHAP frames with non-default format flags but shifts the rest`() {
@@ -111,7 +112,7 @@ class Id3ChapterShifterTest {
 
     val chapters = parseChapterTimes(shifter.shift(id3, listOf(cut)))
 
-    assertEquals(listOf(10_000L to 14_000L, 7_000L to 11_000L), chapters)
+    assertThat(chapters).containsExactly(10_000L to 14_000L, 7_000L to 11_000L)
   }
 
   // -- fixture builders / parsers (fixed-width CHAP layout per the id3v2 chapter addendum) --

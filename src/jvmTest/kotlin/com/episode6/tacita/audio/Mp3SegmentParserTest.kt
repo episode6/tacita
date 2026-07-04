@@ -1,5 +1,9 @@
 package com.episode6.tacita.audio
 
+import assertk.assertThat
+import assertk.assertions.hasSize
+import assertk.assertions.isCloseTo
+import assertk.assertions.isEqualTo
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -61,10 +65,10 @@ class Mp3SegmentParserTest {
 
     val frames = parser.frames(data, from = 0, until = data.size)
 
-    assertEquals(3, frames.size)
+    assertThat(frames).hasSize(3)
     frames.forEach {
-      assertEquals(261, it.endByte - it.startByte)
-      assertEquals(576.0 / 22050, it.durationSeconds, 1e-9)
+      assertThat(it.endByte - it.startByte).isEqualTo(261)
+      assertThat(it.durationSeconds).isCloseTo(576.0 / 22050, 1e-9)
     }
   }
 
@@ -74,10 +78,10 @@ class Mp3SegmentParserTest {
 
     val frames = parser.frames(data, from = 0, until = data.size)
 
-    assertEquals(3, frames.size)
+    assertThat(frames).hasSize(3)
     frames.forEach {
-      assertEquals(104, it.endByte - it.startByte)
-      assertEquals(576.0 / 11025, it.durationSeconds, 1e-9)
+      assertThat(it.endByte - it.startByte).isEqualTo(104)
+      assertThat(it.durationSeconds).isCloseTo(576.0 / 11025, 1e-9)
     }
   }
 
@@ -86,8 +90,8 @@ class Mp3SegmentParserTest {
 
     val frames = parser.frames(data, from = 0, until = data.size)
 
-    assertEquals(2, frames.size)
-    frames.forEach { assertEquals(262, it.endByte - it.startByte) }
+    assertThat(frames).hasSize(2)
+    frames.forEach { assertThat(it.endByte - it.startByte).isEqualTo(262) }
   }
 
   @Test fun `excludes a truncated final frame`() {
@@ -97,8 +101,8 @@ class Mp3SegmentParserTest {
 
     val frames = parser.frames(data, from = 0, until = data.size)
 
-    assertEquals(2, frames.size)
-    assertEquals(2 * 261, frames.last().endByte)
+    assertThat(frames).hasSize(2)
+    assertThat(frames.last().endByte).isEqualTo(2 * 261)
   }
 
   @Test fun `scans a continuous MPEG2 stream as a single segment`() {
@@ -106,9 +110,9 @@ class Mp3SegmentParserTest {
 
     val scan = parser.scan(data)
 
-    assertEquals(1, scan.segments.size)
-    assertEquals(0, scan.leadingBytes)
-    assertEquals(100 * 576.0 / 22050, scan.totalDurationSeconds, 1e-6)
+    assertThat(scan.segments).hasSize(1)
+    assertThat(scan.leadingBytes).isEqualTo(0)
+    assertThat(scan.totalDurationSeconds).isCloseTo(100 * 576.0 / 22050, 1e-6)
   }
 
   /** Header for an mp3 layer III frame; [version] is the 2-bit header field value. */

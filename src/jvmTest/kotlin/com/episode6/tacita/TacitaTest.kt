@@ -1,5 +1,8 @@
 package com.episode6.tacita
 
+import assertk.assertThat
+import assertk.assertions.isEqualTo
+import assertk.assertions.isInstanceOf
 import com.episode6.tacita.audio.fixture
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -91,10 +94,10 @@ class TacitaTest {
       cutAds = true,
     ).toList()
 
-    assertEquals(1, requestCount)
-    assertContentEquals(previousDownload, referenceFile.readBytes(), "promotion should replace the stale reference")
-    assertContentEquals(contentA + contentB, outputFile.readBytes())
-    assertIs<DownloadState.Complete>(states.last())
+    assertThat(requestCount).isEqualTo(1)
+    assertThat(referenceFile.readBytes(), name = "promotion should replace the stale reference").isEqualTo(previousDownload)
+    assertThat(outputFile.readBytes()).isEqualTo(contentA + contentB)
+    assertThat(states.last()).isInstanceOf(DownloadState.Complete::class)
   }
 
   @Test fun `reuses an existing reference file`() = runBlocking<Unit> {
