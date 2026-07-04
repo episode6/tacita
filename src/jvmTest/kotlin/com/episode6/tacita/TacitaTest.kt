@@ -1,8 +1,6 @@
 package com.episode6.tacita
 
-import com.episode6.tacita.audio.AdCutter
 import com.episode6.tacita.audio.fixture
-import com.episode6.tacita.http.Downloader
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -110,15 +108,12 @@ class TacitaTest {
         headers = headersOf(HttpHeaders.ContentLength, body.size.toString()),
       )
     }
-    return Tacita.downloadPodcast(
+    return Tacita.withClient { HttpClient(engine) }.downloadPodcast(
       url = "https://example.com/episode.mp3",
       outputFile = outputFile.toOkioPath(),
       referenceFile = referenceFile.toOkioPath(),
       overwrite = overwrite,
       cutAds = cutAds,
-      downloader = Downloader(httpClient = HttpClient(engine)),
-      adCutter = AdCutter(),
-      fileSystem = okio.FileSystem.SYSTEM,
     )
   }
 }

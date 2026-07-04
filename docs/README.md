@@ -55,4 +55,17 @@ and reference files are kept on disk for future runs.
 platforms, add any [ktor client engine](https://ktor.io/docs/client-engines.html) to your build
 and it will be picked up automatically.
 
+<br/>
+
+**Custom http clients:** the `Tacita` companion object is itself a `Tacita` instance backed by
+ktor's default engine discovery. For custom engine config — or tests using ktor's `MockEngine` —
+hold your own instance instead (e.g. as a DI singleton):
+
+```kotlin
+val tacita: Tacita = Tacita.withClient { HttpClient(myEngine) }
+```
+
+The factory is invoked once per download and must return a new client each time; tacita owns and
+closes it when the download completes.
+
 {% include readme_index.html %}

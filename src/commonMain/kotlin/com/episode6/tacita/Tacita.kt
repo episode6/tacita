@@ -4,9 +4,7 @@ import com.episode6.tacita.audio.AdCutter
 import com.episode6.tacita.http.Downloader
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import okio.FileSystem
 import okio.IOException
 import okio.Path
 
@@ -25,7 +23,15 @@ public sealed class DownloadState {
   public data object Complete : DownloadState()
 }
 
-public object Tacita {
+/**
+ * Downloads podcast episodes and cuts the dynamically-injected ads out of them.
+ *
+ * The companion object is itself a [Tacita] backed by ktor's default engine discovery, so simple
+ * callers can use `Tacita.downloadPodcast(...)` directly. Callers that need a custom http client
+ * (engine config, proxies, tests via ktor's MockEngine) can hold a [Tacita.withClient] instance
+ * instead — e.g. as a DI singleton.
+ */
+public interface Tacita {
 
   /**
    * Downloads the podcast episode at [url] to [outputFile], optionally cutting
@@ -50,50 +56,52 @@ public object Tacita {
     referenceFile: Path,
     overwrite: Boolean,
     cutAds: Boolean,
-  ): Flow<DownloadState> = flow {
-    val httpClient = HttpClient()
-    try {
-      emitAll(
-        downloadPodcast(
-          url = url,
-          outputFile = outputFile,
-          referenceFile = referenceFile,
-          overwrite = overwrite,
-          cutAds = cutAds,
-          downloader = Downloader(httpClient = httpClient),
-          adCutter = AdCutter(),
-          fileSystem = systemFileSystem,
-        )
-      )
-    } finally {
-      httpClient.close()
-    }
-  }
+  ): Flow<DownloadState>
 
-  internal fun downloadPodcast(
+  public companion object : Tacita by TacitaImpl() {
+    /**
+     * Returns a [Tacita] whose downloads use http clients from [factory].
+     *
+     * [factory] is invoked once per download and MUST return a new [HttpClient] each time —
+     * tacita owns and closes it when the download completes. (Passing a pre-built engine, e.g.
+     * ktor's MockEngine, is fine: closing a client doesn't close an externally-supplied engine.)
+     */
+    public fun withClient(factory: () -> HttpClient): Tacita = TacitaImpl(factory)
+  }
+}
+
+private class TacitaImpl(
+  private val httpClientFactory: () -> HttpClient = { HttpClient() },
+) : Tacita {
+
+  override fun downloadPodcast(
     url: String,
     outputFile: Path,
     referenceFile: Path,
     overwrite: Boolean,
     cutAds: Boolean,
-    downloader: Downloader,
-    adCutter: AdCutter,
-    fileSystem: FileSystem,
   ): Flow<DownloadState> = flow {
-    if (cutAds && overwrite && fileSystem.exists(outputFile)) {
-      referenceFile.parent?.let { fileSystem.createDirectories(it) }
-      fileSystem.atomicMove(outputFile, referenceFile)
-    }
-    downloader.downloadFile(url = url, outputFile = outputFile, overwrite = overwrite)
-      .collect { emit(DownloadState.Downloading(outputFile, it)) }
-    if (cutAds) {
-      if (!fileSystem.exists(referenceFile)) {
-        downloader.downloadFile(url = url, outputFile = referenceFile, overwrite = true)
-          .collect { emit(DownloadState.Downloading(referenceFile, it)) }
+    val httpClient = httpClientFactory()
+    try {
+      val fileSystem = systemFileSystem
+      val downloader = Downloader(httpClient = httpClient, fileSystem = fileSystem)
+      if (cutAds && overwrite && fileSystem.exists(outputFile)) {
+        referenceFile.parent?.let { fileSystem.createDirectories(it) }
+        fileSystem.atomicMove(outputFile, referenceFile)
       }
-      emit(DownloadState.CuttingAds)
-      adCutter.cutAds(file = outputFile, referenceFile = referenceFile)
+      downloader.downloadFile(url = url, outputFile = outputFile, overwrite = overwrite)
+        .collect { emit(DownloadState.Downloading(outputFile, it)) }
+      if (cutAds) {
+        if (!fileSystem.exists(referenceFile)) {
+          downloader.downloadFile(url = url, outputFile = referenceFile, overwrite = true)
+            .collect { emit(DownloadState.Downloading(referenceFile, it)) }
+        }
+        emit(DownloadState.CuttingAds)
+        AdCutter(fileSystem = fileSystem).cutAds(file = outputFile, referenceFile = referenceFile)
+      }
+      emit(DownloadState.Complete)
+    } finally {
+      httpClient.close()
     }
-    emit(DownloadState.Complete)
   }
 }

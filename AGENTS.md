@@ -23,9 +23,12 @@ the full target set across OSes with `-Pfilter=linuxX64|windowsX64|macos`.
 This is a single-module Kotlin Multiplatform project rooted at the top of the repo:
 
 - `src/commonMain/` — all production logic:
-  - `Tacita.kt` — the only public entry point: `Tacita.downloadPodcast(...): Flow<DownloadState>`
-    (plus the public `DownloadState` sealed class and `FileAlreadyExistsException`);
-    everything below is `internal`
+  - `Tacita.kt` — the only public entry point: the `Tacita` interface with
+    `downloadPodcast(...): Flow<DownloadState>`. Its companion object is the default instance
+    (private `TacitaImpl`); `Tacita.withClient(factory)` returns an instance with a custom
+    http-client factory (the factory must return a NEW client per download — tacita closes it).
+    Also public: the `DownloadState` sealed class and `FileAlreadyExistsException`.
+    Everything below is `internal`
   - `http/Downloader.kt` — episode downloads via ktor + okio, progress as a `Flow<Float>`
   - `audio/AdCutter.kt` — lossless removal of dynamically-injected ads by diffing two copies
   - `audio/Mp3SegmentParser.kt` — splits an mp3 stream into its independently-encoded segments
