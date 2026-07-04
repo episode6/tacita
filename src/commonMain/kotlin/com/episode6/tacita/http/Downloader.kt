@@ -3,13 +3,12 @@ package com.episode6.tacita.http
 import com.episode6.tacita.FileAlreadyExistsException
 import com.episode6.tacita.systemFileSystem
 import io.ktor.client.HttpClient
-import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentLength
+import io.ktor.http.isSuccess
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -17,6 +16,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import okio.FileSystem
+import okio.IOException
 import okio.Path
 import okio.buffer
 import okio.use
@@ -28,9 +28,6 @@ internal class Downloader(
   // string this app has always sent keeps the served bytes (and ad-cut behavior) stable
   private val userAgent: String = DEFAULT_USER_AGENT,
 ) {
-
-  suspend fun fetchString(url: String): String =
-    httpClient.get(url) { header(HttpHeaders.UserAgent, userAgent) }.bodyAsText()
 
   /* emits @FloatRange(from = 0.0, to = 1.0) */
   fun downloadFile(url: String, outputFile: Path, overwrite: Boolean): Flow<Float> = flow {
@@ -45,25 +42,35 @@ internal class Downloader(
 
     emit(0f)
 
-    fileSystem.sink(outputFile).buffer().use { sink ->
+    try {
       httpClient.prepareGet(url) { header(HttpHeaders.UserAgent, userAgent) }.execute { response ->
-        val size = response.contentLength() ?: -1L
-        val channel = response.bodyAsChannel()
-        val chunk = ByteArray(DOWNLOAD_BUFFER_SIZE)
-        var bytesRead = 0L
-        while (true) {
-          val read = channel.readAvailable(chunk, 0, chunk.size)
-          if (read == -1) break
-          if (read > 0) {
-            sink.write(chunk, 0, read)
-            if (size > 0) {
-              bytesRead += read
-              emit((bytesRead.toDouble() / size.toDouble()).toFloat())
+        if (!response.status.isSuccess()) {
+          throw IOException("GET $url failed with status ${response.status}")
+        }
+        fileSystem.sink(outputFile).buffer().use { sink ->
+          val size = response.contentLength() ?: -1L
+          val channel = response.bodyAsChannel()
+          val chunk = ByteArray(DOWNLOAD_BUFFER_SIZE)
+          var bytesRead = 0L
+          while (true) {
+            val read = channel.readAvailable(chunk, 0, chunk.size)
+            if (read == -1) break
+            if (read > 0) {
+              sink.write(chunk, 0, read)
+              if (size > 0) {
+                bytesRead += read
+                emit((bytesRead.toDouble() / size.toDouble()).toFloat())
+              }
             }
           }
+          sink.flush()
         }
-        sink.flush()
       }
+    } catch (t: Throwable) {
+      // never leave a partial file behind: a later overwrite run would promote it to
+      // become the reference copy
+      fileSystem.delete(outputFile, mustExist = false)
+      throw t
     }
 
     emit(1f)

@@ -6,6 +6,15 @@
   log lines (currently one per ad-cut pass, reporting its outcome); defaults to discarding them
 - Added `Tacita.withLogger(log)` — returns an instance with the default http-client factory but
   a custom logger
+- `Downloader` now throws on non-2xx responses instead of saving the error body as the
+  episode file, and deletes the partial file when a download fails mid-stream
+- Reference promotion (`overwrite` + `cutAds` over an existing output) now replaces an
+  existing stale reference file on all platforms (previously could throw on Windows)
+- Removed dead internal `Downloader.fetchString` (RSS fetching lives in consuming apps)
+- New test coverage: direct `Downloader` tests (status handling, progress with/without
+  Content-Length, parent dir creation, pinned user-agent), `Id3ChapterShifter` unit tests
+  (v2.3/v2.4 size encoding, bail-outs, overlapping cuts, real byte offsets), and
+  `Mp3SegmentParser` MPEG2/MPEG2.5 + truncated-frame edge cases
 
 ### v0.0.1 - Released 7/3/2026
 

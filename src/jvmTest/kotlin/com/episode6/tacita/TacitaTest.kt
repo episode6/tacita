@@ -1,5 +1,16 @@
 package com.episode6.tacita
 
+import assertk.assertFailure
+import assertk.assertThat
+import assertk.assertions.containsExactly
+import assertk.assertions.hasSize
+import assertk.assertions.isBetween
+import assertk.assertions.isEmpty
+import assertk.assertions.isEqualTo
+import assertk.assertions.isFalse
+import assertk.assertions.isInstanceOf
+import assertk.assertions.isTrue
+import assertk.assertions.startsWith
 import com.episode6.tacita.audio.fixture
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -13,12 +24,6 @@ import kotlinx.coroutines.runBlocking
 import okio.Path.Companion.toOkioPath
 import java.nio.file.Files
 import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
 
 class TacitaTest {
 
@@ -40,16 +45,16 @@ class TacitaTest {
       cutAds = true,
     ).toList()
 
-    assertEquals(2, requestCount)
+    assertThat(requestCount).isEqualTo(2)
     val downloadedFiles = states.filterIsInstance<DownloadState.Downloading>().map { it.file }.distinct()
-    assertEquals(listOf(outputFile.toOkioPath(), referenceFile.toOkioPath()), downloadedFiles)
+    assertThat(downloadedFiles).containsExactly(outputFile.toOkioPath(), referenceFile.toOkioPath())
     states.filterIsInstance<DownloadState.Downloading>().forEach {
-      assertTrue(it.percentComplete in 0f..1f)
+      assertThat(it.percentComplete).isBetween(0f, 1f)
     }
-    assertIs<DownloadState.CuttingAds>(states[states.lastIndex - 1])
-    assertIs<DownloadState.Complete>(states.last())
-    assertContentEquals(contentA + contentB, outputFile.readBytes())
-    assertTrue(referenceFile.exists(), "reference should be kept for future runs")
+    assertThat(states[states.lastIndex - 1]).isInstanceOf(DownloadState.CuttingAds::class)
+    assertThat(states.last()).isInstanceOf(DownloadState.Complete::class)
+    assertThat(outputFile.readBytes()).isEqualTo(contentA + contentB)
+    assertThat(referenceFile.exists(), name = "reference should be kept for future runs").isTrue()
   }
 
   @Test fun `skips ad cutting when cutAds is false`() = runBlocking<Unit> {
@@ -57,11 +62,11 @@ class TacitaTest {
 
     val states = downloadPodcast(responses = listOf(bytes), overwrite = false, cutAds = false).toList()
 
-    assertEquals(1, requestCount)
-    assertTrue(states.none { it is DownloadState.CuttingAds })
-    assertIs<DownloadState.Complete>(states.last())
-    assertContentEquals(bytes, outputFile.readBytes())
-    assertFalse(referenceFile.exists())
+    assertThat(requestCount).isEqualTo(1)
+    assertThat(states.filterIsInstance<DownloadState.CuttingAds>()).isEmpty()
+    assertThat(states.last()).isInstanceOf(DownloadState.Complete::class)
+    assertThat(outputFile.readBytes()).isEqualTo(bytes)
+    assertThat(referenceFile.exists()).isFalse()
   }
 
   @Test fun `promotes the overwritten file to reference instead of downloading one`() = runBlocking<Unit> {
@@ -74,10 +79,27 @@ class TacitaTest {
       cutAds = true,
     ).toList()
 
-    assertEquals(1, requestCount)
-    assertContentEquals(previousDownload, referenceFile.readBytes())
-    assertContentEquals(contentA + contentB, outputFile.readBytes())
-    assertIs<DownloadState.Complete>(states.last())
+    assertThat(requestCount).isEqualTo(1)
+    assertThat(referenceFile.readBytes()).isEqualTo(previousDownload)
+    assertThat(outputFile.readBytes()).isEqualTo(contentA + contentB)
+    assertThat(states.last()).isInstanceOf(DownloadState.Complete::class)
+  }
+
+  @Test fun `promotes over a stale reference left by an earlier overwrite`() = runBlocking<Unit> {
+    val previousDownload = contentA + adB + contentB
+    outputFile.writeBytes(previousDownload)
+    referenceFile.writeBytes(contentA + adA + contentB) // stale: already consumed by an earlier run
+
+    val states = downloadPodcast(
+      responses = listOf(contentA + adA + contentB),
+      overwrite = true,
+      cutAds = true,
+    ).toList()
+
+    assertThat(requestCount).isEqualTo(1)
+    assertThat(referenceFile.readBytes(), name = "promotion should replace the stale reference").isEqualTo(previousDownload)
+    assertThat(outputFile.readBytes()).isEqualTo(contentA + contentB)
+    assertThat(states.last()).isInstanceOf(DownloadState.Complete::class)
   }
 
   @Test fun `reuses an existing reference file`() = runBlocking<Unit> {
@@ -85,8 +107,8 @@ class TacitaTest {
 
     downloadPodcast(responses = listOf(contentA + adA + contentB), overwrite = false, cutAds = true).toList()
 
-    assertEquals(1, requestCount)
-    assertContentEquals(contentA + contentB, outputFile.readBytes())
+    assertThat(requestCount).isEqualTo(1)
+    assertThat(outputFile.readBytes()).isEqualTo(contentA + contentB)
   }
 
   @Test fun `creates a fresh client per download by default`() = runBlocking<Unit> {
@@ -97,7 +119,7 @@ class TacitaTest {
     tacita.downloadPodcast(URL, outputFile.toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
     tacita.downloadPodcast(URL, dir.resolve("two.mp3").toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
 
-    assertEquals(2, factoryCalls)
+    assertThat(factoryCalls).isEqualTo(2)
   }
 
   @Test fun `shares a single never-closed client when reuse is true`() = runBlocking<Unit> {
@@ -108,9 +130,9 @@ class TacitaTest {
     tacita.downloadPodcast(URL, outputFile.toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
     tacita.downloadPodcast(URL, dir.resolve("two.mp3").toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
 
-    assertEquals(1, factoryCalls)
+    assertThat(factoryCalls).isEqualTo(1)
     // the second download used the same, still-open client
-    assertContentEquals(contentA, dir.resolve("two.mp3").readBytes())
+    assertThat(dir.resolve("two.mp3").readBytes()).isEqualTo(contentA)
   }
 
   @Test fun `reports ad-cut outcome to the log param`() = runBlocking<Unit> {
@@ -120,18 +142,18 @@ class TacitaTest {
 
     tacita.downloadPodcast(URL, outputFile.toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = true).toList()
 
-    assertEquals(1, logLines.size)
-    assertTrue(logLines.single().startsWith("AdCutter: episode.mp3: AdsCut"), logLines.single())
+    assertThat(logLines).hasSize(1)
+    assertThat(logLines.single()).startsWith("AdCutter: episode.mp3: AdsCut")
   }
 
   @Test fun `fails when the output file exists and overwrite is false`() {
     outputFile.writeBytes(contentA)
 
-    assertFailsWith<FileAlreadyExistsException> {
+    assertFailure {
       runBlocking {
         downloadPodcast(responses = listOf(contentA), overwrite = false, cutAds = false).toList()
       }
-    }
+    }.isInstanceOf(FileAlreadyExistsException::class)
   }
 
   private fun engine(responses: List<ByteArray>): MockEngine = MockEngine {
