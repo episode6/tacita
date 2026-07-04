@@ -1,0 +1,11 @@
+{
+  "id": "update-algorithm-doc-skill",
+  "name": "Keep the Algorithm Doc Current",
+  "version": "1.0.0",
+  "description": "Policy requiring docs/ALGORITHM.md updates whenever the download/ad-cutting process is explored or changed.",
+  "author": "ghackett",
+  "entry": "SKILL.md",
+  "created_at": "2026-07-04T02:30:00-04:00",
+  "tags": ["policy", "docs", "algorithm", "research"],
+  "required_actions": ["update docs/ALGORITHM.md alongside any process change or exploration"]
+}

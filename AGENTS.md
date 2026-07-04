@@ -65,8 +65,16 @@ This is a single-module Kotlin Multiplatform project rooted at the top of the re
   `testRuntimeOnly("org.junit.platform:junit-platform-launcher")` explicitly (handled in
   `buildSrc` ConfigMultiPlugin)
 
+## Algorithm knowledge
+
+`docs/ALGORITHM.md` is the research & validation history behind the ad-cutting design
+(serving model, disproven approaches, invariants, validation playbook). Read it before
+changing AdCutter/Downloader behavior, and update it alongside any process change or
+exploration — see `.agents/update-algorithm-doc-skill/`.
+
 ## Skills
 
 See `.agents/` for available skills:
 - `.agents/release-branch-skill/` — cut/create a new release branch (e.g. "cut a release branch"); also registered under `.claude/skills/` for auto-trigger
 - `.agents/ship-release-skill/` — ship a release
+- `.agents/update-algorithm-doc-skill/` — docs/ALGORITHM.md must be updated with any exploration or change to the download/ad-cut process
