@@ -11,7 +11,7 @@ $dokka.location:com.episode6.tacita/DownloadState///PointingToDeclaration/tacit
 $dokka.location:com.episode6.tacita/FileAlreadyExistsException///PointingToDeclaration/tacita/com.episode6.tacita/-file-already-exists-exception/index.html
 $dokka.location:com.episode6.tacita/FileAlreadyExistsException/FileAlreadyExistsException/#okio.Path/PointingToDeclaration/tacita/com.episode6.tacita/-file-already-exists-exception/-file-already-exists-exception.html
 $dokka.location:com.episode6.tacita/Tacita.Companion///PointingToDeclaration/tacita/com.episode6.tacita/-tacita/-companion/index.html
-$dokka.location:com.episode6.tacita/Tacita.Companion/withClient/#kotlin.Function0[io.ktor.client.HttpClient]/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/-companion/with-client.html
+$dokka.location:com.episode6.tacita/Tacita.Companion/withClient/#kotlin.Boolean#kotlin.Function0[io.ktor.client.HttpClient]/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/-companion/with-client.html
 $dokka.location:com.episode6.tacita/Tacita///PointingToDeclaration/tacita/com.episode6.tacita/-tacita/index.html
 $dokka.location:com.episode6.tacita/Tacita/downloadPodcast/#kotlin.String#okio.Path#okio.Path#kotlin.Boolean#kotlin.Boolean/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/download-podcast.html
 com.episode6.tacita
