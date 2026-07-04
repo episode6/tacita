@@ -72,9 +72,15 @@ public interface Tacita {
      *
      * When [reuse] is true, [factory] is invoked lazily once, the resulting client is shared by
      * every download, and tacita NEVER closes it — the caller owns its lifecycle.
+     *
+     * [log] receives diagnostic log lines (currently one per ad-cut pass, reporting its
+     * outcome); it defaults to discarding them.
      */
-    public fun withClient(reuse: Boolean = false, factory: () -> HttpClient): Tacita =
-      TacitaImpl(httpClientFactory = factory, reuseClient = reuse)
+    public fun withClient(
+      reuse: Boolean = false,
+      log: (String) -> Unit = {},
+      factory: () -> HttpClient,
+    ): Tacita = TacitaImpl(httpClientFactory = factory, reuseClient = reuse, log = log)
   }
 }
 
@@ -82,6 +88,7 @@ private class TacitaImpl(
   private val httpClientFactory: () -> HttpClient = { HttpClient() },
   private val reuseClient: Boolean = false,
   private val fileSystem: FileSystem = systemFileSystem,
+  log: (String) -> Unit = {},
   mp3SegmentParser: Mp3SegmentParser = Mp3SegmentParser(),
   id3ChapterShifter: Id3ChapterShifter = Id3ChapterShifter(),
 ) : Tacita {
@@ -89,6 +96,7 @@ private class TacitaImpl(
   private val reusedClient: HttpClient by lazy(httpClientFactory)
   private val adCutter = AdCutter(
     fileSystem = fileSystem,
+    log = log,
     mp3SegmentParser = mp3SegmentParser,
     id3ChapterShifter = id3ChapterShifter,
   )

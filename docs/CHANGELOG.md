@@ -2,6 +2,9 @@
 
 ### v0.0.2-SNAPSHOT - Unreleased
 
+- Added an optional `log: (String) -> Unit` param to `Tacita.withClient` — receives diagnostic
+  log lines (currently one per ad-cut pass, reporting its outcome); defaults to discarding them
+
 ### v0.0.1 - Released 7/3/2026
 
 - Initial release: `Tacita.downloadPodcast(url, outputFile, referenceFile, overwrite, cutAds)`
