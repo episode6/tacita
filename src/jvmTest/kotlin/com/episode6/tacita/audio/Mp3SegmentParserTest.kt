@@ -13,10 +13,12 @@ import kotlin.test.assertTrue
  */
 class Mp3SegmentParserTest {
 
+  private val parser = Mp3SegmentParser()
+
   @Test fun `stitched file splits into its source segments`() {
     val data = fixture("stitched.mp3")
 
-    val scan = Mp3SegmentParser.scan(data)
+    val scan = parser.scan(data)
 
     assertEquals(3, scan.segments.size)
     assertDurationsClose(listOf(6.0, 2.0, 8.0), scan.segments.map { it.durationSeconds })
@@ -26,7 +28,7 @@ class Mp3SegmentParserTest {
   @Test fun `segments are contiguous and cover the stream after the id3 header`() {
     val data = fixture("stitched.mp3")
 
-    val scan = Mp3SegmentParser.scan(data)
+    val scan = parser.scan(data)
 
     assertTrue(scan.leadingBytes > 0) // fixture has an ID3v2 header
     assertEquals(scan.leadingBytes, scan.segments.first().startByte)
@@ -37,14 +39,14 @@ class Mp3SegmentParserTest {
   @Test fun `continuous encode yields a single segment`() {
     val data = fixture("single.mp3")
 
-    val scan = Mp3SegmentParser.scan(data)
+    val scan = parser.scan(data)
 
     assertEquals(1, scan.segments.size)
     assertTrue(abs(scan.totalDurationSeconds - 10.0) < DURATION_TOLERANCE_SECONDS)
   }
 
   @Test fun `non-mp3 data yields no segments`() {
-    val scan = Mp3SegmentParser.scan(ByteArray(1024) { it.toByte() })
+    val scan = parser.scan(ByteArray(1024) { it.toByte() })
 
     assertEquals(0, scan.segments.size)
     assertEquals(0.0, scan.totalDurationSeconds)

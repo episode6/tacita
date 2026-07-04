@@ -30,6 +30,8 @@ import okio.Path.Companion.toPath
 internal class AdCutter(
   private val fileSystem: FileSystem = systemFileSystem,
   private val log: (String) -> Unit = {},
+  private val mp3SegmentParser: Mp3SegmentParser = Mp3SegmentParser(),
+  private val id3ChapterShifter: Id3ChapterShifter = Id3ChapterShifter(),
 ) {
 
   data class Config(
@@ -57,12 +59,12 @@ internal class AdCutter(
     val reference = fileSystem.read(referenceFile) { readByteArray() }
     if (data.contentEquals(reference)) return Result.NoAdsFound
 
-    val dataStart = Mp3SegmentParser.audioStart(data)
-    val frames = Mp3SegmentParser.frames(data, from = dataStart, until = data.size)
+    val dataStart = mp3SegmentParser.audioStart(data)
+    val frames = mp3SegmentParser.frames(data, from = dataStart, until = data.size)
     if (frames.isEmpty()) return Result.Skipped("no mp3 frames found")
     val totalSeconds = frames.sumOf { it.durationSeconds }
 
-    val rawCuts = diff(data, dataStart, reference, Mp3SegmentParser.audioStart(reference))
+    val rawCuts = diff(data, dataStart, reference, mp3SegmentParser.audioStart(reference))
     val cuts = snapToFrames(rawCuts, frames)
     val secondsRemoved = cuts.sumOf { it.seconds }
 
@@ -79,7 +81,7 @@ internal class AdCutter(
       )
     }
 
-    val leading = Id3ChapterShifter.shift(
+    val leading = id3ChapterShifter.shift(
       id3 = data.copyOfRange(0, dataStart),
       cuts = cuts.map {
         Id3ChapterShifter.CutRange(

@@ -12,6 +12,7 @@ import kotlin.test.assertTrue
 
 class AdCutterTest {
 
+  private val parser = Mp3SegmentParser()
   private val adCutter = AdCutter()
 
   private val contentA = fixture("content-a.mp3") // ~6.1s
@@ -64,7 +65,7 @@ class AdCutterTest {
   @Test fun `recovers content that lost its stitch marker`() = runBlocking {
     // strip content-b's leading tag frame so it merges into the ad's segment,
     // like an Acast stitch that drops the join marker
-    val headerlessB = contentB.copyOfRange(Mp3SegmentParser.frames(contentB, 0, contentB.size).first().endByte, contentB.size)
+    val headerlessB = contentB.copyOfRange(parser.frames(contentB, 0, contentB.size).first().endByte, contentB.size)
     val file = tempFile(contentA + adA + headerlessB)
     val reference = tempFile(contentA + contentB)
 
@@ -91,7 +92,7 @@ class AdCutterTest {
   @Test fun `cuts only the unshared part of a break that merged with stable material`() = runBlocking {
     // ad-b was injected right after stable material (ad-a here) without a stitch marker;
     // only the bytes absent from the reference are cut
-    val headerlessAdB = adB.copyOfRange(Mp3SegmentParser.frames(adB, 0, adB.size).first().endByte, adB.size)
+    val headerlessAdB = adB.copyOfRange(parser.frames(adB, 0, adB.size).first().endByte, adB.size)
     val file = tempFile(contentA + adA + headerlessAdB + contentB)
     val reference = tempFile(contentA + adA + contentB)
 
@@ -128,7 +129,7 @@ class AdCutterTest {
     // Audioboom-style: neither the inserted ad nor the following content carries a tag
     // frame, so segment structure is invisible and only byte alignment can find the ad
     val headerless = { bytes: ByteArray ->
-      bytes.copyOfRange(Mp3SegmentParser.frames(bytes, 0, bytes.size).first().endByte, bytes.size)
+      bytes.copyOfRange(parser.frames(bytes, 0, bytes.size).first().endByte, bytes.size)
     }
     val file = tempFile(contentA + headerless(adA) + headerless(contentB))
     val reference = tempFile(contentA + headerless(contentB))

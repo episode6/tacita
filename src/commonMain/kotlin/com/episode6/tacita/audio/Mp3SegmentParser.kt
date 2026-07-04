@@ -9,7 +9,7 @@ package com.episode6.tacita.audio
  * high fraction of filler bytes — real audio frames are high-entropy, so the combination
  * doesn't occur in them by chance.
  */
-internal object Mp3SegmentParser {
+internal class Mp3SegmentParser {
 
   data class Segment(
     val startByte: Int,
@@ -150,16 +150,17 @@ internal object Mp3SegmentParser {
     return false
   }
 
-  private const val FRAME_HEADER_SIZE = 4
-  private const val TAG_SEARCH_WINDOW = 200
-  private const val TRAILING_FLUSH_MERGE_SECONDS = 2.0
-  private const val MIN_TAG_FRAME_FILL_FRACTION = 0.10
-  private val TAG_STRINGS = listOf("Xing", "Info", "LAME", "VBRI").map { it.encodeToByteArray() }
-  private val MPEG1_BITRATES_KBPS = intArrayOf(0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320)
-  private val MPEG2_BITRATES_KBPS = intArrayOf(0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160)
-  private val SAMPLE_RATES = mapOf(
-    3 to intArrayOf(44100, 48000, 32000), // MPEG1
-    2 to intArrayOf(22050, 24000, 16000), // MPEG2
-    0 to intArrayOf(11025, 12000, 8000), // MPEG2.5
-  )
 }
+
+private const val FRAME_HEADER_SIZE = 4
+private const val TAG_SEARCH_WINDOW = 200
+private const val TRAILING_FLUSH_MERGE_SECONDS = 2.0
+private const val MIN_TAG_FRAME_FILL_FRACTION = 0.10
+private val TAG_STRINGS = listOf("Xing", "Info", "LAME", "VBRI").map { it.encodeToByteArray() }
+private val MPEG1_BITRATES_KBPS = intArrayOf(0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320)
+private val MPEG2_BITRATES_KBPS = intArrayOf(0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160)
+private val SAMPLE_RATES = mapOf(
+  3 to intArrayOf(44100, 48000, 32000), // MPEG1
+  2 to intArrayOf(22050, 24000, 16000), // MPEG2
+  0 to intArrayOf(11025, 12000, 8000), // MPEG2.5
+)

@@ -1,10 +1,13 @@
 package com.episode6.tacita
 
 import com.episode6.tacita.audio.AdCutter
+import com.episode6.tacita.audio.Id3ChapterShifter
+import com.episode6.tacita.audio.Mp3SegmentParser
 import com.episode6.tacita.http.Downloader
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import okio.FileSystem
 import okio.IOException
 import okio.Path
 
@@ -78,9 +81,17 @@ public interface Tacita {
 private class TacitaImpl(
   private val httpClientFactory: () -> HttpClient = { HttpClient() },
   private val reuseClient: Boolean = false,
+  private val fileSystem: FileSystem = systemFileSystem,
+  mp3SegmentParser: Mp3SegmentParser = Mp3SegmentParser(),
+  id3ChapterShifter: Id3ChapterShifter = Id3ChapterShifter(),
 ) : Tacita {
 
   private val reusedClient: HttpClient by lazy(httpClientFactory)
+  private val adCutter = AdCutter(
+    fileSystem = fileSystem,
+    mp3SegmentParser = mp3SegmentParser,
+    id3ChapterShifter = id3ChapterShifter,
+  )
 
   override fun downloadPodcast(
     url: String,
@@ -91,7 +102,6 @@ private class TacitaImpl(
   ): Flow<DownloadState> = flow {
     val httpClient = if (reuseClient) reusedClient else httpClientFactory()
     try {
-      val fileSystem = systemFileSystem
       val downloader = Downloader(httpClient = httpClient, fileSystem = fileSystem)
       if (cutAds && overwrite && fileSystem.exists(outputFile)) {
         referenceFile.parent?.let { fileSystem.createDirectories(it) }
@@ -105,7 +115,7 @@ private class TacitaImpl(
             .collect { emit(DownloadState.Downloading(referenceFile, it)) }
         }
         emit(DownloadState.CuttingAds)
-        AdCutter(fileSystem = fileSystem).cutAds(file = outputFile, referenceFile = referenceFile)
+        adCutter.cutAds(file = outputFile, referenceFile = referenceFile)
       }
       emit(DownloadState.Complete)
     } finally {

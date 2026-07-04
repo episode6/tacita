@@ -7,7 +7,7 @@ package com.episode6.tacita.audio
  * tag's size and layout untouched. Tags using features that make in-place editing unsafe
  * (unsynchronisation, extended headers, non-default frame format flags) are left as-is.
  */
-internal object Id3ChapterShifter {
+internal class Id3ChapterShifter {
 
   data class CutRange(val fromByte: Int, val toByte: Int, val fromMs: Long, val toMs: Long)
 
@@ -71,6 +71,6 @@ internal object Id3ChapterShifter {
     bytes[at + 2] = (v shr 8).toByte()
     bytes[at + 3] = v.toByte()
   }
-
-  private const val NO_OFFSET = 0xFFFFFFFFL
 }
+
+private const val NO_OFFSET = 0xFFFFFFFFL
