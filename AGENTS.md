@@ -25,8 +25,9 @@ This is a single-module Kotlin Multiplatform project rooted at the top of the re
 - `src/commonMain/` — all production logic:
   - `Tacita.kt` — the only public entry point: the `Tacita` interface with
     `downloadPodcast(...): Flow<DownloadState>`. Its companion object is the default instance
-    (private `TacitaImpl`); `Tacita.withClient(factory)` returns an instance with a custom
-    http-client factory (the factory must return a NEW client per download — tacita closes it).
+    (private `TacitaImpl`); `Tacita.withClient(reuse, factory)` returns an instance with a custom
+    http-client factory. reuse=false (default): factory returns a NEW client per download and
+    tacita closes it; reuse=true: factory invoked lazily once, client shared and NEVER closed.
     Also public: the `DownloadState` sealed class and `FileAlreadyExistsException`.
     Everything below is `internal`
   - `http/Downloader.kt` — episode downloads via ktor + okio, progress as a `Flow<Float>`

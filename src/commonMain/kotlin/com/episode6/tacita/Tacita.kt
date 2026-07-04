@@ -62,17 +62,25 @@ public interface Tacita {
     /**
      * Returns a [Tacita] whose downloads use http clients from [factory].
      *
-     * [factory] is invoked once per download and MUST return a new [HttpClient] each time —
-     * tacita owns and closes it when the download completes. (Passing a pre-built engine, e.g.
-     * ktor's MockEngine, is fine: closing a client doesn't close an externally-supplied engine.)
+     * When [reuse] is false (the default), [factory] is invoked once per download and MUST
+     * return a new [HttpClient] each time — tacita owns and closes it when the download
+     * completes. (Passing a pre-built engine, e.g. ktor's MockEngine, is fine: closing a client
+     * doesn't close an externally-supplied engine.)
+     *
+     * When [reuse] is true, [factory] is invoked lazily once, the resulting client is shared by
+     * every download, and tacita NEVER closes it — the caller owns its lifecycle.
      */
-    public fun withClient(factory: () -> HttpClient): Tacita = TacitaImpl(factory)
+    public fun withClient(reuse: Boolean = false, factory: () -> HttpClient): Tacita =
+      TacitaImpl(httpClientFactory = factory, reuseClient = reuse)
   }
 }
 
 private class TacitaImpl(
   private val httpClientFactory: () -> HttpClient = { HttpClient() },
+  private val reuseClient: Boolean = false,
 ) : Tacita {
+
+  private val reusedClient: HttpClient by lazy(httpClientFactory)
 
   override fun downloadPodcast(
     url: String,
@@ -81,7 +89,7 @@ private class TacitaImpl(
     overwrite: Boolean,
     cutAds: Boolean,
   ): Flow<DownloadState> = flow {
-    val httpClient = httpClientFactory()
+    val httpClient = if (reuseClient) reusedClient else httpClientFactory()
     try {
       val fileSystem = systemFileSystem
       val downloader = Downloader(httpClient = httpClient, fileSystem = fileSystem)
@@ -101,7 +109,7 @@ private class TacitaImpl(
       }
       emit(DownloadState.Complete)
     } finally {
-      httpClient.close()
+      if (!reuseClient) httpClient.close()
     }
   }
 }

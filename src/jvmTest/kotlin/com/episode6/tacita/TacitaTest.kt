@@ -89,6 +89,30 @@ class TacitaTest {
     assertContentEquals(contentA + contentB, outputFile.readBytes())
   }
 
+  @Test fun `creates a fresh client per download by default`() = runBlocking<Unit> {
+    var factoryCalls = 0
+    val sharedEngine = engine(listOf(contentA, contentA))
+    val tacita = Tacita.withClient { factoryCalls++; HttpClient(sharedEngine) }
+
+    tacita.downloadPodcast(URL, outputFile.toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
+    tacita.downloadPodcast(URL, dir.resolve("two.mp3").toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
+
+    assertEquals(2, factoryCalls)
+  }
+
+  @Test fun `shares a single never-closed client when reuse is true`() = runBlocking<Unit> {
+    var factoryCalls = 0
+    val sharedEngine = engine(listOf(contentA, contentA))
+    val tacita = Tacita.withClient(reuse = true) { factoryCalls++; HttpClient(sharedEngine) }
+
+    tacita.downloadPodcast(URL, outputFile.toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
+    tacita.downloadPodcast(URL, dir.resolve("two.mp3").toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
+
+    assertEquals(1, factoryCalls)
+    // the second download used the same, still-open client
+    assertContentEquals(contentA, dir.resolve("two.mp3").readBytes())
+  }
+
   @Test fun `fails when the output file exists and overwrite is false`() {
     outputFile.writeBytes(contentA)
 
@@ -99,17 +123,19 @@ class TacitaTest {
     }
   }
 
+  private fun engine(responses: List<ByteArray>): MockEngine = MockEngine {
+    val body = responses[requestCount++]
+    respond(
+      content = body,
+      status = HttpStatusCode.OK,
+      headers = headersOf(HttpHeaders.ContentLength, body.size.toString()),
+    )
+  }
+
   private fun downloadPodcast(responses: List<ByteArray>, overwrite: Boolean, cutAds: Boolean): Flow<DownloadState> {
-    val engine = MockEngine {
-      val body = responses[requestCount++]
-      respond(
-        content = body,
-        status = HttpStatusCode.OK,
-        headers = headersOf(HttpHeaders.ContentLength, body.size.toString()),
-      )
-    }
+    val engine = engine(responses)
     return Tacita.withClient { HttpClient(engine) }.downloadPodcast(
-      url = "https://example.com/episode.mp3",
+      url = URL,
       outputFile = outputFile.toOkioPath(),
       referenceFile = referenceFile.toOkioPath(),
       overwrite = overwrite,
@@ -117,3 +143,5 @@ class TacitaTest {
     )
   }
 }
+
+private const val URL = "https://example.com/episode.mp3"
