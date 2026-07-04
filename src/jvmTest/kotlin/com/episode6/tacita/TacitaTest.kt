@@ -80,6 +80,23 @@ class TacitaTest {
     assertIs<DownloadState.Complete>(states.last())
   }
 
+  @Test fun `promotes over a stale reference left by an earlier overwrite`() = runBlocking<Unit> {
+    val previousDownload = contentA + adB + contentB
+    outputFile.writeBytes(previousDownload)
+    referenceFile.writeBytes(contentA + adA + contentB) // stale: already consumed by an earlier run
+
+    val states = downloadPodcast(
+      responses = listOf(contentA + adA + contentB),
+      overwrite = true,
+      cutAds = true,
+    ).toList()
+
+    assertEquals(1, requestCount)
+    assertContentEquals(previousDownload, referenceFile.readBytes(), "promotion should replace the stale reference")
+    assertContentEquals(contentA + contentB, outputFile.readBytes())
+    assertIs<DownloadState.Complete>(states.last())
+  }
+
   @Test fun `reuses an existing reference file`() = runBlocking<Unit> {
     referenceFile.writeBytes(contentA + adB + contentB)
 

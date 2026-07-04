@@ -120,6 +120,8 @@ private class TacitaImpl(
       val downloader = Downloader(httpClient = httpClient, fileSystem = fileSystem)
       if (cutAds && overwrite && fileSystem.exists(outputFile)) {
         referenceFile.parent?.let { fileSystem.createDirectories(it) }
+        // atomicMove onto an existing file replaces on posix but can throw on windows
+        fileSystem.delete(referenceFile, mustExist = false)
         fileSystem.atomicMove(outputFile, referenceFile)
       }
       downloader.downloadFile(url = url, outputFile = outputFile, overwrite = overwrite)

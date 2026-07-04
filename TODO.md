@@ -1,7 +1,6 @@
 # TODO
 
 Known gaps worth filling, from the 2026-07-03 test-coverage review. Ranked by value.
-(Items 2 and 3 are correctness fixes disguised as test gaps.)
 
 ## 1. Run tests on non-JVM targets
 
@@ -13,31 +12,24 @@ classpath resources on native. Options: embed the ~40KB of mp3 fixtures as gener
 exactly the platform-varying stuff: `atomicMove` semantics, mingw filesystem behavior,
 `Dispatchers.IO` on native.
 
-## 2. Downloader: check HTTP status + direct tests
+## ~~2. Downloader: check HTTP status + direct tests~~ (done 2026-07-04)
 
-`Downloader.downloadFile` never checks the response status — a 404 streams the error page
-to disk and reports success (dead episode URLs are a real-world case). Fix (throw on
-non-2xx), plus direct tests for: mid-download failure (currently leaves a partial file —
-decide if intended), missing Content-Length (progress emits only 0f/1f), and parent
-directory creation. Note: changing downloader behavior triggers
-`.agents/update-algorithm-doc-skill/`.
+`Downloader.downloadFile` now throws on non-2xx and deletes the partial file when a
+download fails mid-stream; `DownloaderTest` covers status handling, mid-download failure,
+missing Content-Length progress, parent directory creation, and the pinned user-agent.
 
-## 3. Reference promotion onto an existing .adref
+## ~~3. Reference promotion onto an existing .adref~~ (done 2026-07-04)
 
-`TacitaImpl` promotes the output file with `fileSystem.atomicMove(outputFile,
-referenceFile)`. If a stale reference already exists (re-download with overwrite twice),
-the move replaces on Linux/JVM but can throw on Windows. Add an explicit
-`delete(referenceFile, mustExist = false)` before the move, plus a test.
+`TacitaImpl` now deletes an existing reference before `atomicMove` promotion (replaces on
+all platforms, not just posix), with a covering test in `TacitaTest`.
 
-## 4. Id3ChapterShifter unit tests
+## ~~4. Id3ChapterShifter unit tests~~ (done 2026-07-04)
 
-Only exercised through one happy-path AdCutter test. Untested: v2.3 vs v2.4 size encoding,
-the bail-outs (unsynchronisation flag, extended header, non-default frame format flags),
-chapters overlapping the cut range, and real byte offsets (the existing test only uses the
-0xFFFFFFFF "no offset" sentinel).
+`Id3ChapterShifterTest` covers v2.3 vs v2.4 size encoding, the bail-outs
+(unsynchronisation, extended header, unsupported versions, non-default frame format
+flags), chapters overlapping/inside the cut range, multiple cuts, and real byte offsets.
 
-## 5. Mp3SegmentParser edge cases + dead code
+## ~~5. Mp3SegmentParser edge cases + dead code~~ (done 2026-07-04)
 
-All fixtures are MPEG1/44.1kHz — MPEG2/2.5 frame parsing and truncated-final-frame
-handling are untested. Also: `Downloader.fetchString` is dead code (the RSS fetch moved to
-the consuming app) — delete it rather than test it.
+MPEG2/MPEG2.5 frame parsing, the padding bit, and truncated-final-frame handling are now
+tested with synthetic frames; the dead `Downloader.fetchString` was deleted.
