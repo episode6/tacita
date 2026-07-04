@@ -65,7 +65,13 @@ hold your own instance instead (e.g. as a DI singleton):
 val tacita: Tacita = Tacita.withClient { HttpClient(myEngine) }
 ```
 
-The factory is invoked once per download and must return a new client each time; tacita owns and
-closes it when the download completes.
+By default the factory is invoked once per download and must return a new client each time;
+tacita owns and closes it when the download completes. Pass `reuse = true` to instead invoke the
+factory lazily once and share that client across every download — tacita will never close it, so
+its lifecycle is yours:
+
+```kotlin
+val tacita: Tacita = Tacita.withClient(reuse = true) { myLongLivedClient }
+```
 
 {% include readme_index.html %}
