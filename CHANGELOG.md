@@ -1,6 +1,8 @@
 # ChangeLog
 
-### v0.0.1-SNAPSHOT - Unreleased
+### v0.0.2-SNAPSHOT - Unreleased
+
+### v0.0.1 - Released 7/3/2026
 
 - Initial release: `Tacita.downloadPodcast(url, outputFile, referenceFile, overwrite, cutAds)`
   returns a `Flow<DownloadState>` — downloads a podcast episode (ktor + okio) and losslessly cuts
