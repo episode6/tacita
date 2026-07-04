@@ -29,6 +29,7 @@ This is a single-module Kotlin Multiplatform project rooted at the top of the re
     custom http-client factory. reuse=false (default): factory returns a NEW client per download
     and tacita closes it; reuse=true: factory invoked lazily once, client shared and NEVER
     closed. log (default no-op) receives diagnostic lines (one per ad-cut pass with its outcome).
+    `Tacita.withLogger(log)` returns an instance with the default client factory + custom logger.
     Also public: the `DownloadState` sealed class and `FileAlreadyExistsException`.
     Everything below is `internal`
   - `http/Downloader.kt` — episode downloads via ktor + okio, progress as a `Flow<Float>`

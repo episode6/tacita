@@ -81,6 +81,13 @@ public interface Tacita {
       log: (String) -> Unit = {},
       factory: () -> HttpClient,
     ): Tacita = TacitaImpl(httpClientFactory = factory, reuseClient = reuse, log = log)
+
+    /**
+     * Returns a [Tacita] backed by the same default http-client factory as the companion
+     * instance, but with [log] receiving diagnostic log lines (currently one per ad-cut pass,
+     * reporting its outcome).
+     */
+    public fun withLogger(log: (String) -> Unit): Tacita = TacitaImpl(log = log)
   }
 }
 

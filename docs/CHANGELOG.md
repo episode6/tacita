@@ -4,6 +4,8 @@
 
 - Added an optional `log: (String) -> Unit` param to `Tacita.withClient` — receives diagnostic
   log lines (currently one per ad-cut pass, reporting its outcome); defaults to discarding them
+- Added `Tacita.withLogger(log)` — returns an instance with the default http-client factory but
+  a custom logger
 
 ### v0.0.1 - Released 7/3/2026
 
