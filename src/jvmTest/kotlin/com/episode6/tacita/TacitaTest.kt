@@ -113,6 +113,17 @@ class TacitaTest {
     assertContentEquals(contentA, dir.resolve("two.mp3").readBytes())
   }
 
+  @Test fun `reports ad-cut outcome to the log param`() = runBlocking<Unit> {
+    val logLines = mutableListOf<String>()
+    val engine = engine(listOf(contentA + adA + contentB, contentA + adB + contentB))
+    val tacita = Tacita.withClient(log = { logLines += it }) { HttpClient(engine) }
+
+    tacita.downloadPodcast(URL, outputFile.toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = true).toList()
+
+    assertEquals(1, logLines.size)
+    assertTrue(logLines.single().startsWith("AdCutter: episode.mp3: AdsCut"), logLines.single())
+  }
+
   @Test fun `fails when the output file exists and overwrite is false`() {
     outputFile.writeBytes(contentA)
 
