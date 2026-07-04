@@ -103,7 +103,15 @@ the injected ads. Identical copies → `NoAdsFound`.
 - **Reference strategy** (in `Tacita.downloadPodcast`, moved from the consuming app): when
   overwriting an existing output it is *promoted* to become the reference (serving-model
   fact 3: an older same-tier copy diffs better than a fresh one); an existing reference is
-  reused instead of re-downloaded; references are kept on disk for future runs.
+  reused instead of re-downloaded; references are kept on disk for future runs. A stale
+  reference is explicitly deleted before promotion (2026-07-04: `atomicMove` onto an
+  existing target replaces on posix but can throw on Windows).
+- **Download hygiene** (`Downloader`, 2026-07-04): non-2xx responses throw instead of
+  saving the error body as an episode (dead episode URLs are a real-world case), and a
+  failed download deletes its partial file. Both protect the reference strategy: a saved
+  error page or partial file would otherwise be *promoted* to reference on the next
+  overwrite run and poison the diff (the guards would then `Skipped` the cut, but the
+  useful reference copy would already be lost).
 
 ### The invariant everything above serves
 
