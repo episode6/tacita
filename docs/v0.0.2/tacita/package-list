@@ -1,0 +1,18 @@
+$dokka.format:html-v1
+$dokka.linkExtension:html
+$dokka.location:com.episode6.tacita////PointingToDeclaration/tacita/com.episode6.tacita/index.html
+$dokka.location:com.episode6.tacita/DownloadState.Complete///PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-complete/index.html
+$dokka.location:com.episode6.tacita/DownloadState.CuttingAds///PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-cutting-ads/index.html
+$dokka.location:com.episode6.tacita/DownloadState.Downloading///PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-downloading/index.html
+$dokka.location:com.episode6.tacita/DownloadState.Downloading/Downloading/#okio.Path#kotlin.Float/PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-downloading/-downloading.html
+$dokka.location:com.episode6.tacita/DownloadState.Downloading/file/#/PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-downloading/file.html
+$dokka.location:com.episode6.tacita/DownloadState.Downloading/percentComplete/#/PointingToDeclaration/tacita/com.episode6.tacita/-download-state/-downloading/percent-complete.html
+$dokka.location:com.episode6.tacita/DownloadState///PointingToDeclaration/tacita/com.episode6.tacita/-download-state/index.html
+$dokka.location:com.episode6.tacita/FileAlreadyExistsException///PointingToDeclaration/tacita/com.episode6.tacita/-file-already-exists-exception/index.html
+$dokka.location:com.episode6.tacita/FileAlreadyExistsException/FileAlreadyExistsException/#okio.Path/PointingToDeclaration/tacita/com.episode6.tacita/-file-already-exists-exception/-file-already-exists-exception.html
+$dokka.location:com.episode6.tacita/Tacita.Companion///PointingToDeclaration/tacita/com.episode6.tacita/-tacita/-companion/index.html
+$dokka.location:com.episode6.tacita/Tacita.Companion/withClient/#kotlin.Boolean#kotlin.Function1[kotlin.String,kotlin.Unit]#kotlin.Function0[io.ktor.client.HttpClient]/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/-companion/with-client.html
+$dokka.location:com.episode6.tacita/Tacita.Companion/withLogger/#kotlin.Function1[kotlin.String,kotlin.Unit]/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/-companion/with-logger.html
+$dokka.location:com.episode6.tacita/Tacita///PointingToDeclaration/tacita/com.episode6.tacita/-tacita/index.html
+$dokka.location:com.episode6.tacita/Tacita/downloadPodcast/#kotlin.String#okio.Path#okio.Path#kotlin.Boolean#kotlin.Boolean#kotlin.Long?#kotlin.Long?/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/download-podcast.html
+com.episode6.tacita
