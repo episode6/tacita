@@ -201,6 +201,8 @@ duration/structure alone re-opens a failure mode that was ear-verified twice.
 | Identical pairs (several episodes) | `NoAdsFound`, byte-untouched |
 | Decode checks | `ffmpeg -f null` full-file and splice-region decodes: zero errors, every case |
 | Performance | ~4s for a 70MB file (JVM) |
+| Nextlander 8923058 via Audioboom static fallback (2026-07-04) | 66,843,410 bytes, decodes clean, duration 4170.37s vs declared 4170; ear-verified clean at both leaked mid-roll slots (ghackett, 2026-07-05) |
+| Conan 6e993d49 via Simplecast bot tier (2026-07-04) | 58,529,431 bytes vs declared 58,529,858, decodes clean, 3658.08s vs declared 3658; ear-verified: pre-roll ads gone (ghackett, 2026-07-05) |
 
 ## Alternative-detection research (2026-07-04)
 
@@ -285,8 +287,9 @@ a same-tier reference (including waveform-level ideas). Findings, so nobody re-r
   `itunes:duration` can't make it cut content (worst case it validates a copy that
   still carries fill — the under-cut direction), but ear checks on the first
   clean-served episodes of each host are still owed before trusting the map
-  (playbook step 5). As of 2026-07-04 the Nextlander/Conan cut points have NOT yet
-  been ear-verified — the probes verified byte counts only.
+  (playbook step 5). **Ear-verified 2026-07-05 (ghackett)**: Nextlander's static
+  fallback is clean at both leaked mid-roll slots (~24:38 and ~44:42), and Conan's
+  bot-tier copy has no pre-roll ads — the servings that previously carried fill.
 - Audioboom's leaked `m=[…]` slot positions are logged (`CleanSourceResolver`) but
   unused; if the static fallback ever disappears they're the obvious next input for a
   slot-targeted diff.
