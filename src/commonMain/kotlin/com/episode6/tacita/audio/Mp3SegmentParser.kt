@@ -1,5 +1,8 @@
 package com.episode6.tacita.audio
 
+import okio.FileHandle
+import okio.IOException
+
 /**
  * Splits an mp3 stream into the independently-encoded segments it was stitched together from.
  *
@@ -30,7 +33,18 @@ internal class Mp3SegmentParser {
     val durationSeconds: Double,
   )
 
-  fun scan(data: ByteArray): Scan {
+  fun scan(data: ByteArray): Scan = scan(ArrayBytes(data))
+
+  /**
+   * [scan] over a file streamed through a fixed-size window instead of a whole-file byte
+   * array — mobile heaps can't hold a 100MB+ episode in one allocation (observed as a
+   * silent Android OOM, 2026-07-05). Behavior is identical to the array overload; files
+   * larger than [Int.MAX_VALUE] bytes throw (the same Int-offset limit the array had).
+   */
+  fun scan(handle: FileHandle, windowBytes: Int = DEFAULT_WINDOW_BYTES): Scan =
+    scan(WindowedFileBytes(handle, windowBytes))
+
+  private fun scan(data: Bytes): Scan {
     val firstFrame = findNextFrame(data, id3v2Size(data)) ?: return Scan(data.size, emptyList(), 0.0)
     var seconds = 0.0
     val bounds = mutableListOf(Boundary(byte = firstFrame, seconds = 0.0))
@@ -58,10 +72,12 @@ internal class Mp3SegmentParser {
   }
 
   /** Byte offset of the first mp3 frame (skipping any ID3v2 header). */
-  internal fun audioStart(data: ByteArray): Int = findNextFrame(data, id3v2Size(data)) ?: data.size
+  internal fun audioStart(data: ByteArray): Int = ArrayBytes(data).let { findNextFrame(it, id3v2Size(it)) ?: it.size }
 
   /** Walks the frames tiling [from, until); [from] must be at (or before) a real frame start. */
-  internal fun frames(data: ByteArray, from: Int, until: Int): List<Frame> {
+  internal fun frames(data: ByteArray, from: Int, until: Int): List<Frame> = frames(ArrayBytes(data), from, until)
+
+  private fun frames(data: Bytes, from: Int, until: Int): List<Frame> {
     val frames = mutableListOf<Frame>()
     var pos = from
     while (pos + FRAME_HEADER_SIZE <= until) {
@@ -81,7 +97,7 @@ internal class Mp3SegmentParser {
 
   private data class FrameInfo(val lengthBytes: Int, val durationSeconds: Double)
 
-  private fun findNextFrame(data: ByteArray, from: Int): Int? {
+  private fun findNextFrame(data: Bytes, from: Int): Int? {
     var pos = from
     while (pos + FRAME_HEADER_SIZE <= data.size) {
       if (parseFrameHeader(data, pos) != null) return pos
@@ -90,10 +106,10 @@ internal class Mp3SegmentParser {
     return null
   }
 
-  private fun parseFrameHeader(data: ByteArray, pos: Int): FrameInfo? {
-    val b1 = data[pos].toInt() and 0xFF
-    val b2 = data[pos + 1].toInt() and 0xFF
-    val b3 = data[pos + 2].toInt() and 0xFF
+  private fun parseFrameHeader(data: Bytes, pos: Int): FrameInfo? {
+    val b1 = data.byteAt(pos).toInt() and 0xFF
+    val b2 = data.byteAt(pos + 1).toInt() and 0xFF
+    val b3 = data.byteAt(pos + 2).toInt() and 0xFF
     if (b1 != 0xFF || (b2 and 0xE0) != 0xE0) return null
 
     val version = (b2 shr 3) and 3 // 0=MPEG2.5, 1=reserved, 2=MPEG2, 3=MPEG1
@@ -115,7 +131,7 @@ internal class Mp3SegmentParser {
     )
   }
 
-  private fun isTagFrame(data: ByteArray, pos: Int, frameLength: Int): Boolean {
+  private fun isTagFrame(data: Bytes, pos: Int, frameLength: Int): Boolean {
     val bodyStart = pos + FRAME_HEADER_SIZE
     val bodyEnd = pos + frameLength
     val searchEnd = minOf(bodyStart + TAG_SEARCH_WINDOW, bodyEnd)
@@ -124,26 +140,26 @@ internal class Mp3SegmentParser {
 
     var fillBytes = 0
     for (i in bodyStart until bodyEnd) {
-      when (data[i]) {
+      when (data.byteAt(i)) {
         0x00.toByte(), 0x55.toByte(), 0xAA.toByte() -> fillBytes++
       }
     }
     return fillBytes.toDouble() / (bodyEnd - bodyStart) > MIN_TAG_FRAME_FILL_FRACTION
   }
 
-  private fun id3v2Size(data: ByteArray): Int {
-    if (data.size < 10 || data[0] != 'I'.code.toByte() || data[1] != 'D'.code.toByte() || data[2] != '3'.code.toByte()) return 0
-    val size = (data[6].toInt() and 0x7F shl 21) or
-      (data[7].toInt() and 0x7F shl 14) or
-      (data[8].toInt() and 0x7F shl 7) or
-      (data[9].toInt() and 0x7F)
+  private fun id3v2Size(data: Bytes): Int {
+    if (data.size < 10 || data.byteAt(0) != 'I'.code.toByte() || data.byteAt(1) != 'D'.code.toByte() || data.byteAt(2) != '3'.code.toByte()) return 0
+    val size = (data.byteAt(6).toInt() and 0x7F shl 21) or
+      (data.byteAt(7).toInt() and 0x7F shl 14) or
+      (data.byteAt(8).toInt() and 0x7F shl 7) or
+      (data.byteAt(9).toInt() and 0x7F)
     return 10 + size
   }
 
-  private fun ByteArray.contains(needle: ByteArray, from: Int, until: Int): Boolean {
+  private fun Bytes.contains(needle: ByteArray, from: Int, until: Int): Boolean {
     outer@ for (i in from until until - needle.size + 1) {
       for (j in needle.indices) {
-        if (this[i + j] != needle[j]) continue@outer
+        if (byteAt(i + j) != needle[j]) continue@outer
       }
       return true
     }
@@ -152,6 +168,56 @@ internal class Mp3SegmentParser {
 
 }
 
+/** Random-access byte view; lets the frame walk run over an array or a windowed file. */
+private interface Bytes {
+  val size: Int
+  fun byteAt(index: Int): Byte
+}
+
+private class ArrayBytes(private val data: ByteArray) : Bytes {
+  override val size get() = data.size
+  override fun byteAt(index: Int): Byte = data[index]
+}
+
+/**
+ * A refilling window over a [FileHandle]. The frame walk is forward with short backward
+ * re-reads bounded by one mp3 frame (< 2KB), so each refill keeps a back-margin and misses
+ * stay rare (one refill per ~[windowBytes] of forward progress).
+ */
+private class WindowedFileBytes(private val handle: FileHandle, private val windowBytes: Int) : Bytes {
+  override val size: Int = handle.size().let {
+    if (it > Int.MAX_VALUE) throw IOException("file too large to scan: $it bytes")
+    it.toInt()
+  }
+  private val backMargin = minOf(MAX_BACK_MARGIN, windowBytes / 2)
+  private var buf = ByteArray(windowBytes)
+  private var bufStart = 0
+  private var bufLen = 0
+
+  override fun byteAt(index: Int): Byte {
+    if (index < bufStart || index >= bufStart + bufLen) refill(index)
+    return buf[index - bufStart]
+  }
+
+  private fun refill(index: Int) {
+    val start = (index - backMargin).coerceAtLeast(0)
+    var filled = 0
+    while (filled < windowBytes) {
+      val read = handle.read((start + filled).toLong(), buf, filled, windowBytes - filled)
+      if (read <= 0) break
+      filled += read
+    }
+    bufStart = start
+    bufLen = filled
+    if (index >= bufStart + bufLen) throw IOException("read past end of file at byte $index (size $size)")
+  }
+
+  private companion object {
+    const val MAX_BACK_MARGIN = 8 * 1024
+  }
+}
+
+private const val DEFAULT_WINDOW_BYTES = 1 shl 20
 private const val FRAME_HEADER_SIZE = 4
 private const val TAG_SEARCH_WINDOW = 200
 private const val TRAILING_FLUSH_MERGE_SECONDS = 2.0

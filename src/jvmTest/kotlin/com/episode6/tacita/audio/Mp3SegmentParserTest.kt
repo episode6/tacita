@@ -6,6 +6,9 @@ import assertk.assertions.isCloseTo
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import assertk.assertions.isGreaterThan
+import okio.FileSystem
+import okio.Path.Companion.toOkioPath
+import java.io.File
 import kotlin.test.Test
 
 /**
@@ -53,6 +56,36 @@ class Mp3SegmentParserTest {
 
     assertThat(scan.segments).isEmpty()
     assertThat(scan.totalDurationSeconds).isEqualTo(0.0)
+  }
+
+  @Test fun `file-handle scan matches byte-array scan`() {
+    listOf("stitched.mp3", "single.mp3").forEach { name ->
+      val data = fixture(name)
+
+      val fromFile = scanViaFile(data)
+
+      assertThat(fromFile).isEqualTo(parser.scan(data))
+    }
+  }
+
+  @Test fun `file-handle scan is window-size independent`() {
+    val data = fixture("stitched.mp3")
+    val expected = parser.scan(data)
+
+    // small windows force refills mid-frame, mid-tag-search, and during resync
+    listOf(1 shl 12, 1 shl 14, 1 shl 16).forEach { windowBytes ->
+      assertThat(scanViaFile(data, windowBytes)).isEqualTo(expected)
+    }
+  }
+
+  private fun scanViaFile(data: ByteArray, windowBytes: Int = 1 shl 12): Mp3SegmentParser.Scan {
+    val file = File.createTempFile("parser-test", ".mp3").apply {
+      deleteOnExit()
+      writeBytes(data)
+    }
+    return FileSystem.SYSTEM.openReadOnly(file.toOkioPath()).use { handle ->
+      parser.scan(handle, windowBytes = windowBytes)
+    }
   }
 
   // All fixtures are MPEG1/44.1kHz; the remaining tests cover the other frame formats

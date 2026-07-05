@@ -287,6 +287,34 @@ serving yet — consumers get the do-not-auto-cut warning in the API docs, and t
 real-feed candidate lists (e.g. Nextlander's leaked slots at ~24:38 / ~44:42) should be
 spot-checked by ear before podcast-hacker surfaces markers to users.
 
+### 2026-07-05 field failure: whole-file read OOMed silently on Android
+
+First consumer deployment (podcast-hacker on Android) surfaced as "candidates work on
+desktop and on short episodes, but long episodes yield zero, silently":
+
+- The initial pass read the entire output file into one ByteArray. Nextlander episode 252
+  (8844s, **141,637,667-byte** clean copy, 55 CHAP frames intact on disk — verified by
+  pulling the device file) allocated over the Android per-app heap; the resulting
+  `OutOfMemoryError` was caught by the pass's own per-signal guards (they intentionally
+  catch `Throwable` so no signal can fail a download) and yielded an empty list. The
+  4170s / 66.8MB episode fit, which made the failure look episode-specific. Desktop JVMs
+  (multi-GB heaps) never reproduced it.
+- Two lessons already paid for: **the guards' silence has a diagnostic cost** — consumers
+  that discard the `log` lambda (podcast-hacker did) see nothing at all, so consumers
+  should wire `log` somewhere visible; and **whole-file byte arrays are not mobile-safe**
+  — episodes routinely exceed 100MB.
+- Fix (same day): the segment scan streams through a fixed 1MB refilling window
+  (`Mp3SegmentParser.scan(FileHandle)`; back-margin covers within-frame re-reads, which
+  are bounded by one mp3 frame < 2KB), and the chapter read fetches only the leading
+  ID3v2 tag (header + declared size, capped at 16MB against corrupt sizes). Detection is
+  byte-identical to the array path — window-equivalence is tested down to 4KB windows.
+- **Still open:** `AdCutter` reads both full copies into memory on the diff path (2× the
+  episode size at once). Unreproduced in the field so far only because big Audioboom
+  episodes take the clean-source path; a large episode on a diff-path host (e.g. Acast)
+  would hit the same Android ceiling — likely as a failed download rather than a silent
+  no-op, since the cutter is not guarded. Streaming the diff is a larger lift (the
+  rolling-hash diff wants random access); deferred until observed.
+
 ## MP3-level facts worth keeping
 
 - Tag-frame discriminator (used by `Mp3SegmentParser.scan`; the cutter no longer depends
