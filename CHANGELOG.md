@@ -1,5 +1,7 @@
 # ChangeLog
 
+### v0.0.3-SNAPSHOT - Unreleased
+
 ### v0.0.2 - Released 7/5/2026
 
 - **Clean-source discovery**: `Tacita.downloadPodcast` gained optional
