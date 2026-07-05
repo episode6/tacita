@@ -2,6 +2,18 @@
 
 ### v0.0.2-SNAPSHOT - Unreleased
 
+- **Clean-source discovery**: `Tacita.downloadPodcast` gained optional
+  `declaredEnclosureBytes` / `expectedDurationSeconds` params (the feed's
+  `enclosure length` and `itunes:duration`). When provided with `cutAds`, tacita first
+  probes for a serving that provably matches the feed-declared size/duration — the
+  pinned-tier serving, a static `fallback_url` leaked in the host's redirect chain
+  (Audioboom), or a bot-tier serving (Simplecast) — and downloads that copy directly,
+  skipping the diff. Fixes hosts that inject sticky fill on every tier, where an
+  immediate same-session reference is blind (see docs/ALGORITHM.md, 2026-07-04 research).
+  Note: callers implementing `Tacita` themselves must add the new params.
+- `Downloader` internally supports 1-byte Range probes (final URL + Content-Length) and
+  per-call user-agent overrides to power the above; the pinned default UA is unchanged.
+
 - Added an optional `log: (String) -> Unit` param to `Tacita.withClient` — receives diagnostic
   log lines (currently one per ad-cut pass, reporting its outcome); defaults to discarding them
 - Added `Tacita.withLogger(log)` — returns an instance with the default http-client factory but

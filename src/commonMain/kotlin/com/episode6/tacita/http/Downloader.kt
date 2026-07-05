@@ -6,6 +6,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
+import io.ktor.client.statement.request
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentLength
 import io.ktor.http.isSuccess
@@ -29,8 +30,37 @@ internal class Downloader(
   private val userAgent: String = DEFAULT_USER_AGENT,
 ) {
 
+  /** What a GET at [url] would serve, resolved without downloading the body. */
+  data class ProbeResult(
+    /** The url after all redirects — ad-serving chains leak metadata in its query params. */
+    val finalUrl: String,
+    val contentLength: Long?,
+  )
+
+  /**
+   * Resolves [url]'s redirect chain and reports the served content-length without paying
+   * for the body (a single-byte Range request; servers that ignore Range still only cost
+   * the response headers because the body is never read).
+   */
+  suspend fun probe(url: String, userAgent: String? = null): ProbeResult? =
+    httpClient.prepareGet(url) {
+      header(HttpHeaders.UserAgent, userAgent ?: this@Downloader.userAgent)
+      header(HttpHeaders.Range, "bytes=0-0")
+    }.execute { response ->
+      if (!response.status.isSuccess()) return@execute null
+      val contentRange = response.headers[HttpHeaders.ContentRange]
+      ProbeResult(
+        finalUrl = response.request.url.toString(),
+        contentLength = when {
+          // 206 responses carry the full size in "bytes 0-0/<total>"
+          contentRange != null -> contentRange.substringAfterLast('/').toLongOrNull()
+          else                 -> response.contentLength()
+        },
+      )
+    }
+
   /* emits @FloatRange(from = 0.0, to = 1.0) */
-  fun downloadFile(url: String, outputFile: Path, overwrite: Boolean): Flow<Float> = flow {
+  fun downloadFile(url: String, outputFile: Path, overwrite: Boolean, userAgent: String? = null): Flow<Float> = flow {
     if (fileSystem.exists(outputFile)) {
       when {
         overwrite -> fileSystem.delete(outputFile)
@@ -43,7 +73,9 @@ internal class Downloader(
     emit(0f)
 
     try {
-      httpClient.prepareGet(url) { header(HttpHeaders.UserAgent, userAgent) }.execute { response ->
+      httpClient.prepareGet(url) {
+        header(HttpHeaders.UserAgent, userAgent ?: this@Downloader.userAgent)
+      }.execute { response ->
         if (!response.status.isSuccess()) {
           throw IOException("GET $url failed with status ${response.status}")
         }

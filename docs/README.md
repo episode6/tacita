@@ -49,6 +49,29 @@ far better reference than a fresh one: when `overwrite`-ing an existing `outputF
 promoted to become the reference, an existing `referenceFile` is reused instead of re-downloaded,
 and reference files are kept on disk for future runs.
 
+**Pass the feed's metadata if you have it.** Some hosts inject sticky ad fill on *every* tier,
+which blinds a same-session reference. `downloadPodcast` accepts two optional hints from the
+episode's RSS entry — `declaredEnclosureBytes` (the `enclosure length` attribute) and
+`expectedDurationSeconds` (`itunes:duration`) — and when either is present tacita first probes
+for a serving that provably matches the declared size/duration (the episode url itself, a static
+fallback leaked in the host's redirect chain, or a bot-tier serving) and downloads that ad-free
+copy directly, skipping the diff:
+
+```kotlin
+Tacita.downloadPodcast(
+  url = episodeUrl,
+  outputFile = "episode.mp3".toPath(),
+  referenceFile = "episode.mp3.adref".toPath(),
+  overwrite = true,
+  cutAds = true,
+  declaredEnclosureBytes = rssItem.enclosureLength,   // null / 0 is fine
+  expectedDurationSeconds = rssItem.durationSeconds,  // null is fine
+).collect { /* ... */ }
+```
+
+A candidate copy that doesn't match the feed-declared values within a tight tolerance is simply
+ignored — a false reject just falls back to the diff pipeline above.
+
 <br/>
 
 **A note on http engines:** the JVM artifact ships with ktor's okhttp engine included. On other

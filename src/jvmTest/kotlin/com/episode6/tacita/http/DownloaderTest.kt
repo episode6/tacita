@@ -7,6 +7,7 @@ import assertk.assertions.isEqualTo
 import assertk.assertions.isFalse
 import assertk.assertions.isGreaterThan
 import assertk.assertions.isInstanceOf
+import assertk.assertions.isNull
 import assertk.assertions.messageContains
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -92,6 +93,63 @@ class DownloaderTest {
     download(engine)
 
     assertThat(engine.requestHistory.single().headers[HttpHeaders.UserAgent]).isEqualTo("okhttp/4.12.0")
+  }
+
+  @Test fun `downloadFile can override the user-agent per call`() {
+    val engine = MockEngine { respond(payload, HttpStatusCode.OK) }
+
+    runBlocking {
+      Downloader(httpClient = HttpClient(engine))
+        .downloadFile(url = URL, outputFile = outputFile.toOkioPath(), overwrite = false, userAgent = "curl/8.5.0")
+        .toList()
+    }
+
+    assertThat(engine.requestHistory.single().headers[HttpHeaders.UserAgent]).isEqualTo("curl/8.5.0")
+  }
+
+  @Test fun `probe requests a single byte and parses the total from a 206 content-range`() {
+    val engine = MockEngine {
+      respond(
+        content = ByteArray(1),
+        status = HttpStatusCode.PartialContent,
+        headers = headersOf(HttpHeaders.ContentRange, "bytes 0-0/66843410"),
+      )
+    }
+
+    val result = runBlocking { Downloader(httpClient = HttpClient(engine)).probe(URL) }
+
+    assertThat(engine.requestHistory.single().headers[HttpHeaders.Range]).isEqualTo("bytes=0-0")
+    assertThat(result?.contentLength).isEqualTo(66_843_410L)
+  }
+
+  @Test fun `probe reports the content-length and final url across redirects`() {
+    val redirectTarget = "https://cdn.example.com/variant/abc.mp3?media_type=dynamic"
+    val engine = MockEngine { request ->
+      when (request.url.host) {
+        "example.com" -> respond(
+          content = ByteArray(0),
+          status = HttpStatusCode.Found,
+          headers = headersOf(HttpHeaders.Location, redirectTarget),
+        )
+        else          -> respond(payload, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
+      }
+    }
+
+    val result = runBlocking { Downloader(httpClient = HttpClient(engine)).probe(URL, userAgent = "curl/8.5.0") }
+
+    assertThat(result?.finalUrl).isEqualTo(redirectTarget)
+    assertThat(result?.contentLength).isEqualTo(payload.size.toLong())
+    engine.requestHistory.forEach {
+      assertThat(it.headers[HttpHeaders.UserAgent]).isEqualTo("curl/8.5.0")
+    }
+  }
+
+  @Test fun `probe returns null on a failure status`() {
+    val engine = MockEngine { respond("gone", HttpStatusCode.NotFound) }
+
+    val result = runBlocking { Downloader(httpClient = HttpClient(engine)).probe(URL) }
+
+    assertThat(result).isNull()
   }
 
   private fun download(engine: MockEngine, file: java.io.File = outputFile): List<Float> = runBlocking {
