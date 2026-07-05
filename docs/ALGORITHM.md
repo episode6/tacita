@@ -92,6 +92,37 @@ So both field failures share one cause: on these hosts the pinned okhttp tier is
 provably clean copy is discoverable out-of-band. Tier membership is host-specific:
 okhttp is "app/clean" on Acast but "player/filled" on Audioboom and Simplecast.
 
+### 2026-07-05: Audioboom DAI leaks are per-show, not per-host (Pod Save America)
+
+First real-feed runs of the aggressive candidate pass (probe harness on the published
+0.0.3-SNAPSHOT), prompted by a consumer report that PSA's pre-roll ads produced no
+candidates. Pod Save America episode 8923605 ("Trump's 4th Threesome", declared
+`itunes:duration` 4562s, `enclosure length="0"` as usual for Audioboom):
+
+- **The pipeline behaves optimally — zero candidates is the correct output.** The pinned
+  probe resolved to the dynamic variant (**76,611,592 bytes** twice back-to-back — sticky,
+  ~2.9MB ≈ 3min of fill vs clean), was rightly rejected by the duration heuristic
+  (implied 134.4kbps > 128k × 1.015), and the leaked `fallback_url` static copy
+  (**73,695,496 bytes**, implied 129.2kbps ≈ 128k + ID3 art) validated → served directly.
+  The injected pre-roll never reaches the output file, so there is nothing to mark: log
+  shows `clean serving downloaded directly … no ad-cut needed`, `Complete` carried 0
+  candidates. Any ad still heard at the top of a clean-served PSA episode is baked into
+  the publisher's canonical upload (host-read), which byte evidence cannot see — that's
+  the fingerprinting idea in "Alternative-detection research", not a candidate-pass gap.
+- **PSA leaks no `m=[…]` and writes no CHAP frames**, unlike Nextlander on the same host:
+  its variant URL carries only `al`/`ab`/`ao` (`ao` = audio offset: 691,592 bytes, exactly
+  the ID3v2 tag size — the 690KB APIC artwork) plus an unparsed
+  `metadata=dist%3Dgeneral_run_ads%26one_min%3D1651592…` blob, and its static copy's ID3
+  tag has no CHAP frames at all. So DAI_SLOT/ID3_CHAPTER availability is **per-show
+  publisher configuration, not per-host** — Audioboom carrying a signal for one show
+  proves nothing about another. (`one_min=1651592` is noted but undeciphered — one
+  observation is too little to parse against.)
+- **Nextlander remains the known-results feed**: the same harness on its latest episode
+  (8946742, 4170s) emitted 24 candidates, all `ID3_CHAPTER` STARTs from its rich chapter
+  map (this special leaked no `m=`; the ear-verified episode 8923058 leaked two slots).
+  Chapter-heavy shows demonstrate the designed false-positive tradeoff: most of those 24
+  markers are content chapters, not ads — skippable suggestions, never cut points.
+
 ## Dead ends (each looked correct in byte analysis)
 
 ### #1 — Segment-length classification (shipped briefly, reverted)
