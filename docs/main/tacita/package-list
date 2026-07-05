@@ -14,5 +14,5 @@ $dokka.location:com.episode6.tacita/Tacita.Companion///PointingToDeclaration/ta
 $dokka.location:com.episode6.tacita/Tacita.Companion/withClient/#kotlin.Boolean#kotlin.Function1[kotlin.String,kotlin.Unit]#kotlin.Function0[io.ktor.client.HttpClient]/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/-companion/with-client.html
 $dokka.location:com.episode6.tacita/Tacita.Companion/withLogger/#kotlin.Function1[kotlin.String,kotlin.Unit]/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/-companion/with-logger.html
 $dokka.location:com.episode6.tacita/Tacita///PointingToDeclaration/tacita/com.episode6.tacita/-tacita/index.html
-$dokka.location:com.episode6.tacita/Tacita/downloadPodcast/#kotlin.String#okio.Path#okio.Path#kotlin.Boolean#kotlin.Boolean/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/download-podcast.html
+$dokka.location:com.episode6.tacita/Tacita/downloadPodcast/#kotlin.String#okio.Path#okio.Path#kotlin.Boolean#kotlin.Boolean#kotlin.Long?#kotlin.Long?/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/download-podcast.html
 com.episode6.tacita
