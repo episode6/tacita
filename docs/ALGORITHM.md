@@ -62,6 +62,36 @@ Takeaway for consumers: the back-to-back blind spot isn't hypothetical — refer
 the accuracy lever, so apps should persist references across sessions (or otherwise
 separate the pair in time) rather than re-downloading both copies together.
 
+### 2026-07-04 follow-up: the app tier is no longer exempt (Audioboom, Simplecast)
+
+Live probes against the failing feeds (The Nextlander Podcast on Audioboom, Conan on
+Simplecast), latest episodes, `curl` under different UAs, all numbers Content-Length:
+
+- **Audioboom now injects on the app tier.** Nextlander episode 8923058 (declared
+  `itunes:duration` 4170s, `enclosure length="0"` — Audioboom declares no size):
+  okhttp UA → **70,539,410 bytes** twice back-to-back (sticky), AppleCoreMedia →
+  72,227,090. The clean size is ~66.7MB (4170s @128kbps), so okhttp received **~231s of
+  fill**. Serving-model fact 2 no longer holds for Audioboom; fact 1/3/4 still do.
+- **Audioboom's redirect chain leaks the clean original.** The chain (prfx.byspotify →
+  arttrk → clrtpod → pscrb → podtrac → audioboom) lands on a CloudFront
+  `/v1/variant/….mp3` URL with `media_type=dynamic` whose query params include a signed
+  `fallback_url` (`media_type=static`, path `…/attachments/<id>/<slug>.mp3`): the
+  publisher's original upload, **66,843,410 bytes** — declared duration × 128kbps plus
+  ~117KB of ID3. By construction it contains no injected ads. The intermediate
+  `/v1/download/…` hop also leaks DAI metadata: `m=[1478560,1478560,2682539,2682539]`
+  (two mid-roll slots, ms, start==end), `o=4170360` (original ms), `ab=128` (kbps); the
+  final variant URL carries `al`/`ab` too.
+- **Simplecast fills okhttp but serves bots clean.** Conan episode 6e993d49 (declared
+  `enclosure length="58529858"`, 1:00:58): okhttp UA → **66,379,952 bytes** twice
+  (sticky; ~490s of fill), AppleCoreMedia → 66,263,760 (different fill), plain
+  **`curl` default UA → 58,529,431 bytes ≈ the declared enclosure length** — the clean
+  canonical. The stitched URL embeds `x-total-bytes`.
+
+So both field failures share one cause: on these hosts the pinned okhttp tier is a
+*filled* tier with sticky fill, which blinds an immediate same-tier reference — while a
+provably clean copy is discoverable out-of-band. Tier membership is host-specific:
+okhttp is "app/clean" on Acast but "player/filled" on Audioboom and Simplecast.
+
 ## Dead ends (each looked correct in byte analysis)
 
 ### #1 — Segment-length classification (shipped briefly, reverted)
@@ -104,6 +134,23 @@ listening at the proposed cut points. Ask for an ear check before believing a ne
 Diff the file against a **same-tier reference** (downloaded exactly like the primary — same
 client, same UA). Byte runs present in both copies are kept; runs unique to the primary are
 the injected ads. Identical copies → `NoAdsFound`.
+
+- **Clean-source discovery** (`CleanSourceResolver`, added 2026-07-04 after the field
+  failures above): when the caller passes feed-declared expectations
+  (`declaredEnclosureBytes` from `enclosure length`, `expectedDurationSeconds` from
+  `itunes:duration`), tacita first probes (1-byte Range requests) for a serving that
+  matches them: the pinned-tier serving itself, a `fallback_url` leaked in the resolved
+  redirect chain, then bot-tier UAs (`curl/8.5.0`, `Wget/1.21.4`). A validated hit is
+  **downloaded directly and served as-is — it is never used as a diff reference**
+  (cross-tier diffing is dead end #2 and stays dead; serving the publisher's own upload
+  cannot cut show content because it *is* the show). Validation tolerances are sized so
+  one ad creative (~10s ≈ 160KB @128kbps) cannot validate: declared bytes must match
+  within min(0.5%, 100KB) (floor 4KB); or the implied bitrate over the declared duration
+  must sit within [-0.1%, +1.5%] of a standard CBR mp3 bitrate (VBR files simply never
+  validate and fall through to the diff). After download the file size must equal the
+  probed Content-Length (a short read looks like a completed download); mismatch deletes
+  the copy and falls back to the diff pipeline. No expectations passed → resolution is
+  skipped entirely and behavior is unchanged.
 
 - **Alignment is rsync-style, content-based** (`AdCutter.AnchorIndex`): the primary's
   aligned 4KB blocks are indexed by rolling hash; walk both copies in lockstep; at a
@@ -154,6 +201,44 @@ duration/structure alone re-opens a failure mode that was ear-verified twice.
 | Identical pairs (several episodes) | `NoAdsFound`, byte-untouched |
 | Decode checks | `ffmpeg -f null` full-file and splice-region decodes: zero errors, every case |
 | Performance | ~4s for a 70MB file (JVM) |
+| Nextlander 8923058 via Audioboom static fallback (2026-07-04) | 66,843,410 bytes, decodes clean, duration 4170.37s vs declared 4170; ear-verified clean at both leaked mid-roll slots (ghackett, 2026-07-05) |
+| Conan 6e993d49 via Simplecast bot tier (2026-07-04) | 58,529,431 bytes vs declared 58,529,858, decodes clean, 3658.08s vs declared 3658; ear-verified: pre-roll ads gone (ghackett, 2026-07-05) |
+
+## Alternative-detection research (2026-07-04)
+
+Surveyed after the Nextlander/Conan failures, looking for approaches that don't depend on
+a same-tier reference (including waveform-level ideas). Findings, so nobody re-runs this:
+
+- **Acoustic classification (waveform/ML)** — Adblock Radio (open source) is the
+  strongest prior art: MFCC features → LSTM over 4s windows, ~95% train accuracy, plus a
+  fingerprint hotlist of known ads to patch ML errors. Its own author documents the
+  failure modes: music misread as ads, promos misread as content, host-read ads
+  invisible. A probabilistic classifier cannot honor the under-cut invariant (it will
+  eventually cut show content with no way to know), so this stays **rejected** — same
+  conclusion as the loudness/silence dead end, now with outside evidence.
+- **Transcript + LLM** — MinusPod / AGPAR / similar self-hosted projects (2025–26):
+  Whisper transcription → LLM ad-span detection → ffmpeg cut, with VAD/loudness boundary
+  refinement and cross-episode pattern learning. Genuinely effective per user reports,
+  but needs GPU-scale transcription plus an LLM per episode, and wrong spans cut real
+  content. **Rejected for tacita's core** (wrong layer for a KMP library); if ever
+  wanted, the right shape is a pluggable ad-map hook a consuming app feeds from its own
+  pipeline.
+- **Splice-point detection** (audio-forensics literature, e.g. arXiv 2207.14682:
+  high-frequency discontinuities, spectral-phase and local-noise-level breaks): only
+  locates *joins*, says nothing about which side is the ad. At most a future boundary
+  refinement aid. Not pursued.
+- **Same-feed creative fingerprinting** — the one waveform idea worth building (tracked
+  in TODO.md, not yet implemented): injected creatives repeat across *episodes* of a
+  feed while show content is unique per episode, so a per-feed fingerprint index
+  (landmark/ChromaPrint-style over decoded PCM) can flag repeats as ad candidates. This
+  would catch sticky-fill ads that defeat the same-episode diff using only same-tier
+  data. Known risks to design around: recurring intros/jingles also repeat (never cut a
+  repeat that also appears in a verified-clean copy), and per the meta-lesson it ships
+  as a log-only detector until ear-verified on real feeds.
+- **Decoded-domain alignment** (PCM/spectral cross-correlation instead of byte rolling
+  hash): would handle a host that re-encodes per request — the documented
+  guards-skip-the-file blind spot. Large lift (mp3 decoder across all KMP targets);
+  deliberately deferred until such a host is actually observed. None is today.
 
 ## MP3-level facts worth keeping
 
@@ -193,7 +278,21 @@ duration/structure alone re-opens a failure mode that was ear-verified twice.
 - Back-to-back downloads get identical fill → immediate primary+reference double-download
   yields `NoAdsFound` on a filled tier. Persisted references fix this across sessions.
   Confirmed in the field 2026-07-04: podcast-hacker's immediate pairs left Simplecast
-  (Conan) ads uncut — see the serving-model field observations.
+  (Conan) ads uncut — see the serving-model field observations. Same-day mitigation:
+  clean-source discovery sidesteps the reference entirely when the caller supplies feed
+  metadata and the host exposes a clean serving (both failing hosts do). Feeds where no
+  candidate validates (declared size wrong AND VBR audio, or a host that fills every
+  tier and leaks nothing) still depend on reference age.
+- Clean-source discovery leans on feed honesty: a wrong `enclosure length` /
+  `itunes:duration` can't make it cut content (worst case it validates a copy that
+  still carries fill — the under-cut direction), but ear checks on the first
+  clean-served episodes of each host are still owed before trusting the map
+  (playbook step 5). **Ear-verified 2026-07-05 (ghackett)**: Nextlander's static
+  fallback is clean at both leaked mid-roll slots (~24:38 and ~44:42), and Conan's
+  bot-tier copy has no pre-roll ads — the servings that previously carried fill.
+- Audioboom's leaked `m=[…]` slot positions are logged (`CleanSourceResolver`) but
+  unused; if the static fallback ever disappears they're the obvious next input for a
+  slot-targeted diff.
 - If a host starts varying content encoding per request (re-encoding, not stitching),
   byte alignment finds no anchors and the guards skip the file — safe but ineffective.
   Detecting that case would need decoded-domain comparison (a large, unproven step).

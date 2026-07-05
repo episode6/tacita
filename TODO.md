@@ -1,6 +1,18 @@
 # TODO
 
-Known gaps worth filling, from the 2026-07-03 test-coverage review. Ranked by value.
+Known gaps worth filling. Ranked by value.
+
+## 0. Same-feed creative fingerprinting (R&D, from the 2026-07-04 ad-discovery research)
+
+Injected creatives repeat across episodes of a feed; show content is unique per episode.
+A per-feed fingerprint index (landmark/ChromaPrint-style over decoded PCM) could flag
+repeats as ad candidates, catching sticky-fill ads that defeat the same-episode diff —
+the blind spot that hit Conan/Nextlander — using only same-tier data. Design constraints
+(see docs/ALGORITHM.md "Alternative-detection research"): recurring intros/jingles also
+repeat, so never cut a repeat that also appears in a verified-clean copy; ship as a
+log-only detector until ear-verified on real feeds. Clean-source discovery (shipped
+2026-07-04) covers the currently-failing hosts, so this is not urgent until a host
+appears that fills every tier and leaks no clean serving.
 
 ## 1. Run tests on non-JVM targets
 

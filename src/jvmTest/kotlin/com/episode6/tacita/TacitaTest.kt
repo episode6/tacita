@@ -146,6 +146,83 @@ class TacitaTest {
     assertThat(logLines.single()).startsWith("AdCutter: episode.mp3: AdsCut")
   }
 
+  @Test fun `serves a verified clean copy directly and skips the diff`() = runBlocking<Unit> {
+    val clean = contentA + contentB
+    val logLines = mutableListOf<String>()
+    val engine = engine(listOf(clean, clean)) // one probe, one download
+    val tacita = Tacita.withClient(log = { logLines += it }) { HttpClient(engine) }
+
+    val states = tacita.downloadPodcast(
+      url = URL,
+      outputFile = outputFile.toOkioPath(),
+      referenceFile = referenceFile.toOkioPath(),
+      overwrite = false,
+      cutAds = true,
+      declaredEnclosureBytes = clean.size.toLong(),
+    ).toList()
+
+    assertThat(requestCount).isEqualTo(2)
+    assertThat(states.filterIsInstance<DownloadState.CuttingAds>(), name = "clean copies need no diff").isEmpty()
+    assertThat(states.last()).isInstanceOf(DownloadState.Complete::class)
+    assertThat(outputFile.readBytes()).isEqualTo(clean)
+    assertThat(referenceFile.exists(), name = "no reference needed for a clean serving").isFalse()
+    assertThat(logLines.filter { "clean serving downloaded directly" in it }).hasSize(1)
+  }
+
+  @Test fun `falls back to the diff pipeline when no serving matches the feed's declared size`() = runBlocking<Unit> {
+    // adA (4310B) must exceed the resolver's 4096B tolerance floor or the filled copy would validate
+    val filledA = contentA + adA + contentB
+    val filledB = contentA + adB + contentB
+    // pinned probe + 2 bot-UA probes all see filled copies, then the normal double download
+    val engine = engine(listOf(filledA, filledA, filledA, filledA, filledB))
+    val tacita = Tacita.withClient { HttpClient(engine) }
+
+    val states = tacita.downloadPodcast(
+      url = URL,
+      outputFile = outputFile.toOkioPath(),
+      referenceFile = referenceFile.toOkioPath(),
+      overwrite = false,
+      cutAds = true,
+      declaredEnclosureBytes = (contentA + contentB).size.toLong(),
+    ).toList()
+
+    assertThat(requestCount).isEqualTo(5)
+    assertThat(states.filterIsInstance<DownloadState.CuttingAds>()).hasSize(1)
+    assertThat(outputFile.readBytes(), name = "diff pipeline should still cut the ads").isEqualTo(contentA + contentB)
+  }
+
+  @Test fun `a truncated clean download is discarded and the diff pipeline runs instead`() = runBlocking<Unit> {
+    val clean = contentA + contentB
+    val filledA = contentA + adA + contentB
+    val filledB = contentA + adB + contentB
+    var request = 0
+    val engine = MockEngine {
+      request++
+      when (request) {
+        // probe validates against the declared size…
+        1    -> respond(ByteArray(1), HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, clean.size.toString()))
+        // …but the "clean" download comes up short (connection dropped mid-body)
+        2    -> respond(clean.copyOf(clean.size / 2), HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, clean.size.toString()))
+        3    -> respond(filledA, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, filledA.size.toString()))
+        else -> respond(filledB, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, filledB.size.toString()))
+      }
+    }
+    val tacita = Tacita.withClient { HttpClient(engine) }
+
+    val states = tacita.downloadPodcast(
+      url = URL,
+      outputFile = outputFile.toOkioPath(),
+      referenceFile = referenceFile.toOkioPath(),
+      overwrite = false,
+      cutAds = true,
+      declaredEnclosureBytes = clean.size.toLong(),
+    ).toList()
+
+    assertThat(request).isEqualTo(4)
+    assertThat(states.filterIsInstance<DownloadState.CuttingAds>()).hasSize(1)
+    assertThat(outputFile.readBytes(), name = "truncated copy must never be served").isEqualTo(contentA + contentB)
+  }
+
   @Test fun `fails when the output file exists and overwrite is false`() {
     outputFile.writeBytes(contentA)
 

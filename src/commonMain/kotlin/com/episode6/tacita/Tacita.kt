@@ -3,6 +3,7 @@ package com.episode6.tacita
 import com.episode6.tacita.audio.AdCutter
 import com.episode6.tacita.audio.Id3ChapterShifter
 import com.episode6.tacita.audio.Mp3SegmentParser
+import com.episode6.tacita.http.CleanSourceResolver
 import com.episode6.tacita.http.Downloader
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.Flow
@@ -40,7 +41,15 @@ public interface Tacita {
    * Downloads the podcast episode at [url] to [outputFile], optionally cutting
    * dynamically-injected ads out of it. Does nothing until collected.
    *
-   * Ads are identified by diffing against a second copy of the same episode (kept at
+   * When the feed's declared episode size ([declaredEnclosureBytes], the `enclosure length`
+   * attribute) and/or duration ([expectedDurationSeconds], `itunes:duration`) are provided and
+   * [cutAds] is true, tacita first probes for a serving that provably contains no injected ads —
+   * the pinned-tier serving itself, a static `fallback_url` leaked in the host's redirect chain,
+   * or a bot-tier serving — and downloads that copy directly, skipping the diff. Some hosts
+   * inject sticky fill on every tier, which blinds a same-session reference; a verified-clean
+   * serving is the only reliable escape, so callers that have feed metadata should pass it.
+   *
+   * Otherwise ads are identified by diffing against a second copy of the same episode (kept at
    * [referenceFile]): dynamically injected fill varies per request while everything the episode
    * always ships with doesn't, so byte runs unique to [outputFile] are the injected ads. The
    * splice is lossless (no re-encoding) and the failure mode is always keeping too much, never
@@ -59,6 +68,8 @@ public interface Tacita {
     referenceFile: Path,
     overwrite: Boolean,
     cutAds: Boolean,
+    declaredEnclosureBytes: Long? = null,
+    expectedDurationSeconds: Long? = null,
   ): Flow<DownloadState>
 
   public companion object : Tacita by TacitaImpl() {
@@ -95,7 +106,7 @@ private class TacitaImpl(
   private val httpClientFactory: () -> HttpClient = { HttpClient() },
   private val reuseClient: Boolean = false,
   private val fileSystem: FileSystem = systemFileSystem,
-  log: (String) -> Unit = {},
+  private val log: (String) -> Unit = {},
   mp3SegmentParser: Mp3SegmentParser = Mp3SegmentParser(),
   id3ChapterShifter: Id3ChapterShifter = Id3ChapterShifter(),
 ) : Tacita {
@@ -114,10 +125,32 @@ private class TacitaImpl(
     referenceFile: Path,
     overwrite: Boolean,
     cutAds: Boolean,
+    declaredEnclosureBytes: Long?,
+    expectedDurationSeconds: Long?,
   ): Flow<DownloadState> = flow {
     val httpClient = if (reuseClient) reusedClient else httpClientFactory()
     try {
       val downloader = Downloader(httpClient = httpClient, fileSystem = fileSystem)
+
+      if (cutAds && !(fileSystem.exists(outputFile) && !overwrite)) {
+        val clean = CleanSourceResolver(downloader = downloader, log = log)
+          .resolve(url, declaredEnclosureBytes, expectedDurationSeconds)
+        if (clean != null) {
+          downloader.downloadFile(url = clean.url, outputFile = outputFile, overwrite = overwrite, userAgent = clean.userAgent)
+            .collect { emit(DownloadState.Downloading(outputFile, it)) }
+          val size = fileSystem.metadata(outputFile).size
+          if (size == clean.contentLength) {
+            log("Tacita: ${outputFile.name}: clean serving downloaded directly ($size bytes), no ad-cut needed")
+            emit(DownloadState.Complete)
+            return@flow
+          }
+          // a short read looks like a completed download; never serve a copy we can't
+          // verify — fall back to the diff pipeline below
+          log("Tacita: ${outputFile.name}: clean serving size mismatch (expected ${clean.contentLength}, got $size); falling back to diff")
+          fileSystem.delete(outputFile)
+        }
+      }
+
       if (cutAds && overwrite && fileSystem.exists(outputFile)) {
         referenceFile.parent?.let { fileSystem.createDirectories(it) }
         // atomicMove onto an existing file replaces on posix but can throw on windows
