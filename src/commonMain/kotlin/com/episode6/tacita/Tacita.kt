@@ -52,7 +52,21 @@ public data class AdBoundaryCandidate(
   public val timeMs: Long,
   public val source: Source,
   public val role: Role,
+  /**
+   * How strongly the evidence suggests a real ad boundary, in `0.0..1.0`. Values are
+   * **uncalibrated heuristic priors** (see docs/ALGORITHM.md): the *ordering* is
+   * meaningful — an applied diff cut outranks a leaked DAI slot outranks a chapter
+   * edge, and candidates corroborated by a second signal within 250ms rank above
+   * uncorroborated ones — but the absolute numbers carry no probability semantics and
+   * no ear-verified calibration. Useful for sorting or thresholding a skip list; never
+   * a license to auto-cut or auto-skip, at any value.
+   */
+  public val confidence: Float,
 ) {
+
+  init {
+    require(confidence in 0f..1f) { "confidence must be in 0..1, was $confidence" }
+  }
 
   /** Which detection signal produced a candidate. */
   public enum class Source {

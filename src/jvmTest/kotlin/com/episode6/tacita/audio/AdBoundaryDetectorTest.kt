@@ -1,9 +1,12 @@
 package com.episode6.tacita.audio
 
+import assertk.assertFailure
 import assertk.assertThat
 import assertk.assertions.containsExactly
+import assertk.assertions.hasClass
 import assertk.assertions.hasSize
 import assertk.assertions.isBetween
+import assertk.assertions.isCloseTo
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import com.episode6.tacita.AdBoundaryCandidate
@@ -53,8 +56,8 @@ class AdBoundaryDetectorTest {
 
     // the second splice shifts back by the 5s already removed before it
     assertThat(candidates.filter { it.source == Source.DIFF_CUT }).containsExactly(
-      AdBoundaryCandidate(timeMs = 5_000, source = Source.DIFF_CUT, role = Role.JOIN),
-      AdBoundaryCandidate(timeMs = 15_000, source = Source.DIFF_CUT, role = Role.JOIN),
+      AdBoundaryCandidate(timeMs = 5_000, source = Source.DIFF_CUT, role = Role.JOIN, confidence = 0.9f),
+      AdBoundaryCandidate(timeMs = 15_000, source = Source.DIFF_CUT, role = Role.JOIN, confidence = 0.9f),
     )
   }
 
@@ -65,8 +68,8 @@ class AdBoundaryDetectorTest {
     val candidates = detector.detect(file.toOkioPath(), cutResult = result, daiSlotsMs = emptyList())
 
     assertThat(candidates.filter { it.source == Source.DIFF_CUT }).containsExactly(
-      AdBoundaryCandidate(timeMs = 6_500, source = Source.DIFF_CUT, role = Role.START),
-      AdBoundaryCandidate(timeMs = 8_250, source = Source.DIFF_CUT, role = Role.END),
+      AdBoundaryCandidate(timeMs = 6_500, source = Source.DIFF_CUT, role = Role.START, confidence = 0.65f),
+      AdBoundaryCandidate(timeMs = 8_250, source = Source.DIFF_CUT, role = Role.END, confidence = 0.65f),
     )
   }
 
@@ -85,9 +88,9 @@ class AdBoundaryDetectorTest {
     val candidates = detector.detect(file.toOkioPath(), cutResult = null, daiSlotsMs = emptyList())
 
     assertThat(candidates.filter { it.source == Source.ID3_CHAPTER }).containsExactly(
-      AdBoundaryCandidate(timeMs = 0, source = Source.ID3_CHAPTER, role = Role.START),
-      AdBoundaryCandidate(timeMs = 5_000, source = Source.ID3_CHAPTER, role = Role.START),
-      AdBoundaryCandidate(timeMs = 14_000, source = Source.ID3_CHAPTER, role = Role.END),
+      AdBoundaryCandidate(timeMs = 0, source = Source.ID3_CHAPTER, role = Role.START, confidence = 0.3f),
+      AdBoundaryCandidate(timeMs = 5_000, source = Source.ID3_CHAPTER, role = Role.START, confidence = 0.3f),
+      AdBoundaryCandidate(timeMs = 14_000, source = Source.ID3_CHAPTER, role = Role.END, confidence = 0.3f),
     )
   }
 
@@ -97,8 +100,8 @@ class AdBoundaryDetectorTest {
     val candidates = detector.detect(file.toOkioPath(), cutResult = null, daiSlotsMs = listOf(1_000L, 2_000L))
 
     assertThat(candidates.filter { it.source == Source.DAI_SLOT }).containsExactly(
-      AdBoundaryCandidate(timeMs = 1_000, source = Source.DAI_SLOT, role = Role.JOIN),
-      AdBoundaryCandidate(timeMs = 2_000, source = Source.DAI_SLOT, role = Role.JOIN),
+      AdBoundaryCandidate(timeMs = 1_000, source = Source.DAI_SLOT, role = Role.JOIN, confidence = 0.8f),
+      AdBoundaryCandidate(timeMs = 2_000, source = Source.DAI_SLOT, role = Role.JOIN, confidence = 0.8f),
     )
   }
 
@@ -110,15 +113,25 @@ class AdBoundaryDetectorTest {
     assertThat(candidates.filter { it.source == Source.DAI_SLOT }.map { it.timeMs }).containsExactly(1_000L, 2_000L)
   }
 
-  @Test fun `agreeing candidates from different sources are both kept`() = runBlocking {
+  @Test fun `agreeing candidates from different sources are both kept and boosted`() = runBlocking {
     val file = tempFile(contentA + contentB)
     val segmentJoinMs = detector.detect(file.toOkioPath(), cutResult = null, daiSlotsMs = emptyList())
       .single { it.source == Source.SEGMENT_BOUNDARY }.timeMs
 
     val candidates = detector.detect(file.toOkioPath(), cutResult = null, daiSlotsMs = listOf(segmentJoinMs))
 
-    assertThat(candidates.filter { it.source == Source.SEGMENT_BOUNDARY }).hasSize(1)
-    assertThat(candidates.filter { it.source == Source.DAI_SLOT }).hasSize(1)
+    // independent-evidence combination: 1 - (1 - 0.4)(1 - 0.8)
+    val boosted = 1f - (1f - 0.4f) * (1f - 0.8f)
+    assertThat(candidates.single { it.source == Source.SEGMENT_BOUNDARY }.confidence).isCloseTo(boosted, 0.001f)
+    assertThat(candidates.single { it.source == Source.DAI_SLOT }.confidence).isCloseTo(boosted, 0.001f)
+  }
+
+  @Test fun `a lone candidate keeps its base confidence`() = runBlocking {
+    val file = tempFile(contentA + contentB)
+
+    val candidates = detector.detect(file.toOkioPath(), cutResult = null, daiSlotsMs = emptyList())
+
+    assertThat(candidates.single { it.source == Source.SEGMENT_BOUNDARY }.confidence).isEqualTo(0.4f)
   }
 
   @Test fun `candidates are sorted by time across sources`() = runBlocking {
@@ -130,17 +143,25 @@ class AdBoundaryDetectorTest {
     assertThat(candidates.map { it.timeMs }).isEqualTo(candidates.map { it.timeMs }.sorted())
   }
 
-  @Test fun `a garbage-scale candidate list is capped`() = runBlocking {
+  @Test fun `a garbage-scale candidate list is capped, keeping the highest confidence`() = runBlocking {
     val file = tempFile(contentA)
     val result = AdCutter.Result.Skipped(
       "copies do not agree",
       cuts = (0 until 100).map { cut(fromSeconds = it * 20.0, toSeconds = it * 20.0 + 5.0) },
     )
 
-    val candidates = detector.detect(file.toOkioPath(), cutResult = result, daiSlotsMs = emptyList())
+    // a late high-confidence slot that a time-ordered cap would have dropped
+    val candidates = detector.detect(file.toOkioPath(), cutResult = result, daiSlotsMs = listOf(1_990_300L))
 
     assertThat(candidates).hasSize(64)
+    assertThat(candidates.filter { it.source == Source.DAI_SLOT }).hasSize(1)
     assertThat(logLines.filter { "truncating" in it }).hasSize(1)
+  }
+
+  @Test fun `confidence outside 0 to 1 is rejected`() {
+    assertFailure {
+      AdBoundaryCandidate(timeMs = 0, source = Source.DAI_SLOT, role = Role.JOIN, confidence = 1.5f)
+    }.hasClass(IllegalArgumentException::class)
   }
 
   @Test fun `a missing file never fails detection - file-independent signals still report`() = runBlocking {

@@ -312,6 +312,33 @@ sources are never merged — two signals agreeing at the same timestamp is corro
 consumer should see. The list is capped at 64 (a wholesale-disagreeing reference can
 produce hundreds of `Skipped` ranges; aggressive ≠ unbounded) and sorted by time.
 
+### Confidence model (2026-07-05, additive)
+
+Each candidate carries `confidence: Float` in `0..1` so consumers can sort or threshold a
+skip list. The values are **uncalibrated priors chosen by evidence semantics, not measured
+error rates** — per the meta-lesson, nothing here has been ear-calibrated, so only the
+*ordering* is defensible:
+
+| signal | base | reasoning |
+|---|---|---|
+| `DIFF_CUT` applied splice | 0.9 | the diff *proved* injected material and the cutter acted |
+| `DAI_SLOT` | 0.8 | the host's own ad server placed a slot here |
+| `DIFF_CUT` guard-refused range | 0.65 | real byte-diff evidence the guards declined to act on |
+| `SEGMENT_BOUNDARY` | 0.4 | an encode join — ads and content assembly alike (dead end 1) |
+| `ID3_CHAPTER` edge | 0.3 | usually a content chapter; only sometimes labels an ad slot |
+
+Corroboration: candidates from different sources within the 250ms merge window combine as
+independent evidence — each agreeing candidate's confidence becomes `1 - Π(1 - cᵢ)` (e.g. a
+segment join confirmed by a DAI slot: `1-(0.6)(0.2)` = 0.88). The 64-cap now keeps the
+highest-confidence candidates rather than the earliest, so a garbage-scale diff can't crowd
+out a corroborated marker late in the episode.
+
+Calibration path (open): the priors could be fit against ear-verified maps once enough
+exist (the Nextlander "First Break"/"Second Break" chapters are obvious anchors — a
+title-aware chapter signal is a cheap future upgrade). Until then consumers should treat
+the values as ordinal, and no confidence — including 1.0 — licenses auto-cutting or
+auto-skipping.
+
 **Verification status:** unit/e2e coverage only (synthetic fixtures + the MockEngine
 pipeline tests). Per the meta-lesson, no candidate map has been ear-checked against a real
 serving yet — consumers get the do-not-auto-cut warning in the API docs, and the first
