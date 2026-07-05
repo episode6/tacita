@@ -31,7 +31,7 @@ Tacita.downloadPodcast(
   when (state) {
     is DownloadState.Downloading -> println("${state.file.name}: ${(state.percentComplete * 100).toInt()}%")
     is DownloadState.CuttingAds  -> println("cutting ads...")
-    is DownloadState.Complete    -> println("done!")
+    is DownloadState.Complete    -> println("done! possible ad boundaries: ${state.adBoundaryCandidates}")
   }
 }
 ```
@@ -71,6 +71,23 @@ Tacita.downloadPodcast(
 
 A candidate copy that doesn't match the feed-declared values within a tight tolerance is simply
 ignored — a false reject just falls back to the diff pipeline above.
+
+### Ad boundary candidates
+
+The cutter is deliberately conservative: bytes it can't *prove* are injected ads stay in the
+file. As an aggressive counterpart, when `cutAds` is true the terminal `DownloadState.Complete`
+carries `adBoundaryCandidates` — a list of `AdBoundaryCandidate(timeMs, source, role)` points in
+the output file's timeline that *might* be an ad start/end. They're gathered by a read-only pass
+over the final file from every signal the pipeline saw: joins between independently-encoded mp3
+segments, the diff (splice points where ads were cut, and ad-shaped ranges the safety guards
+refused to cut), ad-insertion slot positions leaked by the host's redirect chain, and ID3
+chapter edges written by the host.
+
+**Candidates are unverified guesses, and false positives are expected by design.** Render them
+as skippable chapter markers so a listener can jump past a suspected ad — but never auto-cut or
+auto-skip on them: byte-shaped evidence about ads is unreliable, and acting on it destructively
+is exactly the failure mode tacita's cutter exists to avoid (see
+[the algorithm doc](ALGORITHM.md)).
 
 <br/>
 
