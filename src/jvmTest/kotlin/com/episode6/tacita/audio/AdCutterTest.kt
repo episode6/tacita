@@ -6,6 +6,7 @@ import assertk.assertions.isBetween
 import assertk.assertions.isCloseTo
 import assertk.assertions.isEqualTo
 import assertk.assertions.isInstanceOf
+import assertk.assertions.isNotEmpty
 import assertk.assertions.prop
 import kotlinx.coroutines.runBlocking
 import okio.Path.Companion.toOkioPath
@@ -30,6 +31,9 @@ class AdCutterTest {
 
     assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
       .prop(AdCutter.Result.AdsCut::secondsRemoved).isCloseTo(2.1, SECONDS_TOLERANCE)
+    val cut = (result as AdCutter.Result.AdsCut).cuts.single()
+    assertThat(cut.fromSeconds, name = "cut start").isCloseTo(6.1, SECONDS_TOLERANCE)
+    assertThat(cut.toSeconds, name = "cut end").isCloseTo(8.2, SECONDS_TOLERANCE)
     assertThat(file.readBytes()).isEqualTo(contentA + contentB)
   }
 
@@ -113,6 +117,10 @@ class AdCutterTest {
     val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
 
     assertThat(result).isInstanceOf(AdCutter.Result.Skipped::class)
+    // the refused range is still reported, as payload for the ad-boundary candidates
+    val cut = (result as AdCutter.Result.Skipped).cuts.single()
+    assertThat(cut.fromSeconds, name = "refused cut start").isCloseTo(6.1, SECONDS_TOLERANCE)
+    assertThat(cut.toSeconds, name = "refused cut end").isCloseTo(11.3, SECONDS_TOLERANCE)
     assertThat(file.readBytes()).isEqualTo(bytes)
   }
 
@@ -124,6 +132,7 @@ class AdCutterTest {
     val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
 
     assertThat(result).isInstanceOf(AdCutter.Result.Skipped::class)
+    assertThat((result as AdCutter.Result.Skipped).cuts, name = "refused cuts are still reported").isNotEmpty()
     assertThat(file.readBytes()).isEqualTo(bytes)
   }
 

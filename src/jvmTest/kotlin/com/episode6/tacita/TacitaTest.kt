@@ -17,6 +17,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.encodeURLParameter
 import io.ktor.http.headersOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.toList
@@ -55,6 +56,10 @@ class TacitaTest {
     assertThat(states.last()).isInstanceOf(DownloadState.Complete::class)
     assertThat(outputFile.readBytes()).isEqualTo(contentA + contentB)
     assertThat(referenceFile.exists(), name = "reference should be kept for future runs").isTrue()
+    val splice = (states.last() as DownloadState.Complete).adBoundaryCandidates
+      .single { it.source == AdBoundaryCandidate.Source.DIFF_CUT }
+    assertThat(splice.role).isEqualTo(AdBoundaryCandidate.Role.JOIN)
+    assertThat(splice.timeMs, name = "splice point in the output timeline").isBetween(5_600L, 6_600L) // ad was at ~6.1s
   }
 
   @Test fun `skips ad cutting when cutAds is false`() = runBlocking<Unit> {
@@ -65,6 +70,7 @@ class TacitaTest {
     assertThat(requestCount).isEqualTo(1)
     assertThat(states.filterIsInstance<DownloadState.CuttingAds>()).isEmpty()
     assertThat(states.last()).isInstanceOf(DownloadState.Complete::class)
+    assertThat((states.last() as DownloadState.Complete).adBoundaryCandidates, name = "no detection without cutAds").isEmpty()
     assertThat(outputFile.readBytes()).isEqualTo(bytes)
     assertThat(referenceFile.exists()).isFalse()
   }
@@ -167,6 +173,69 @@ class TacitaTest {
     assertThat(outputFile.readBytes()).isEqualTo(clean)
     assertThat(referenceFile.exists(), name = "no reference needed for a clean serving").isFalse()
     assertThat(logLines.filter { "clean serving downloaded directly" in it }).hasSize(1)
+    val candidates = (states.last() as DownloadState.Complete).adBoundaryCandidates
+    assertThat(candidates.filter { it.source == AdBoundaryCandidate.Source.SEGMENT_BOUNDARY }, name = "the stitch join is still reported").hasSize(1)
+    assertThat(candidates.filter { it.source == AdBoundaryCandidate.Source.DIFF_CUT }, name = "no diff ran").isEmpty()
+  }
+
+  @Test fun `surfaces guard-refused diff ranges as ad boundary candidates`() = runBlocking<Unit> {
+    // ~5.2s of ads in ~19.4s exceeds the 25% cut guard: the file is left untouched,
+    // but the ad-shaped range still comes back as start/end candidates
+    val bytes = contentA + adA + adB + contentB
+
+    val states = downloadPodcast(
+      responses = listOf(bytes, contentA + contentB),
+      overwrite = false,
+      cutAds = true,
+    ).toList()
+
+    assertThat(outputFile.readBytes(), name = "guards must leave the file untouched").isEqualTo(bytes)
+    val diffCuts = (states.last() as DownloadState.Complete).adBoundaryCandidates
+      .filter { it.source == AdBoundaryCandidate.Source.DIFF_CUT }
+    assertThat(diffCuts.map { it.role }).containsExactly(AdBoundaryCandidate.Role.START, AdBoundaryCandidate.Role.END)
+    assertThat(diffCuts[0].timeMs, name = "refused range start").isBetween(5_600L, 6_600L) // ads start at ~6.1s
+    assertThat(diffCuts[1].timeMs, name = "refused range end").isBetween(10_800L, 11_800L) // and end at ~11.3s
+  }
+
+  @Test fun `surfaces dai slot positions leaked by the redirect chain as candidates`() = runBlocking<Unit> {
+    val clean = contentA + contentB
+    val variantUrl = "https://cdn.example.com/v1/variant/abc.mp3?media_type=dynamic" +
+      "&m=${"[1478560,2682539]".encodeURLParameter()}&al=4170360&ab=128"
+    val engine = MockEngine { request ->
+      requestCount++
+      when {
+        request.url.host == "example.com"          -> respond(
+          content = ByteArray(0),
+          status = HttpStatusCode.Found,
+          headers = headersOf(HttpHeaders.Location, variantUrl),
+        )
+        request.headers[HttpHeaders.Range] != null -> respond(
+          content = ByteArray(1),
+          status = HttpStatusCode.PartialContent,
+          headers = headersOf(HttpHeaders.ContentRange, "bytes 0-0/${clean.size}"),
+        )
+        else                                       -> respond(
+          content = clean,
+          status = HttpStatusCode.OK,
+          headers = headersOf(HttpHeaders.ContentLength, clean.size.toString()),
+        )
+      }
+    }
+    val tacita = Tacita.withClient { HttpClient(engine) }
+
+    val states = tacita.downloadPodcast(
+      url = URL,
+      outputFile = outputFile.toOkioPath(),
+      referenceFile = referenceFile.toOkioPath(),
+      overwrite = false,
+      cutAds = true,
+      declaredEnclosureBytes = clean.size.toLong(),
+    ).toList()
+
+    assertThat(outputFile.readBytes()).isEqualTo(clean)
+    val daiSlots = (states.last() as DownloadState.Complete).adBoundaryCandidates
+      .filter { it.source == AdBoundaryCandidate.Source.DAI_SLOT }
+    assertThat(daiSlots.map { it.timeMs }).containsExactly(1_478_560L, 2_682_539L)
   }
 
   @Test fun `falls back to the diff pipeline when no serving matches the feed's declared size`() = runBlocking<Unit> {

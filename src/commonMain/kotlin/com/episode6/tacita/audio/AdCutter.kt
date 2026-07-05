@@ -43,8 +43,24 @@ internal class AdCutter(
 
   sealed class Result {
     object NoAdsFound : Result()
-    data class AdsCut(val adBreaksRemoved: Int, val secondsRemoved: Double) : Result()
-    data class Skipped(val reason: String) : Result()
+
+    data class AdsCut(
+      val adBreaksRemoved: Int,
+      val secondsRemoved: Double,
+      /** The removed ranges, in the pre-cut file's timeline; sorted and non-overlapping. */
+      val cuts: List<Cut>,
+    ) : Result() {
+      // the cut list is payload for the ad-boundary pass, not for the diagnostic log line
+      override fun toString(): String = "AdsCut(adBreaksRemoved=$adBreaksRemoved, secondsRemoved=$secondsRemoved)"
+    }
+
+    data class Skipped(
+      val reason: String,
+      /** The ranges the guards refused to cut (file untouched); empty when no diff ran. */
+      val cuts: List<Cut> = emptyList(),
+    ) : Result() {
+      override fun toString(): String = "Skipped(reason=$reason)"
+    }
   }
 
   suspend fun cutAds(file: Path, referenceFile: Path, config: Config = Config()): Result =
@@ -70,14 +86,16 @@ internal class AdCutter(
 
     if (totalSeconds - secondsRemoved < totalSeconds * config.minMatchFraction) {
       return Result.Skipped(
-        "copies only agree on ${(totalSeconds - secondsRemoved).toInt()}s of ${totalSeconds.toInt()}s"
+        "copies only agree on ${(totalSeconds - secondsRemoved).toInt()}s of ${totalSeconds.toInt()}s",
+        cuts = cuts,
       )
     }
     if (cuts.isEmpty()) return Result.NoAdsFound
     if (secondsRemoved > totalSeconds * config.maxCutFraction) {
       return Result.Skipped(
         "would remove ${secondsRemoved.toInt()}s of ${totalSeconds.toInt()}s " +
-          "(more than ${(config.maxCutFraction * 100).toInt()}%)"
+          "(more than ${(config.maxCutFraction * 100).toInt()}%)",
+        cuts = cuts,
       )
     }
 
@@ -107,7 +125,7 @@ internal class AdCutter(
     } finally {
       fileSystem.delete(tempFile, mustExist = false)
     }
-    return Result.AdsCut(adBreaksRemoved = cuts.size, secondsRemoved = secondsRemoved)
+    return Result.AdsCut(adBreaksRemoved = cuts.size, secondsRemoved = secondsRemoved, cuts = cuts)
   }
 
   /**
@@ -141,7 +159,8 @@ internal class AdCutter(
     return cuts
   }
 
-  private data class Cut(
+  /** A frame-snapped range unique to the primary copy, in the pre-cut file's timeline. */
+  data class Cut(
     val fromByte: Int,
     val toByte: Int,
     val fromSeconds: Double,
