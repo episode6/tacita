@@ -17,6 +17,13 @@
   `Skipped`; `CleanSourceResolver` (internal) returns leaked DAI slot positions instead of
   only logging them; new internal `Id3FrameReader` extracted from `Id3ChapterShifter`
   (shifting behavior unchanged)
+- **Fix: the candidate pass no longer loads the whole file into memory.** The initial
+  implementation read the entire output file into one ByteArray; on Android-sized heaps a
+  100MB+ episode OOMed *inside the pass's own guards*, silently yielding zero candidates
+  (field-observed 2026-07-05 on a 141MB episode; desktop JVMs were unaffected). The
+  segment scan now streams through a fixed 1MB window and the ID3 chapter read stops at
+  the tag's declared size, so peak memory is independent of episode length. Detection
+  results are byte-identical (window-equivalence covered by tests)
 
 ### v0.0.2 - Released 7/5/2026
 

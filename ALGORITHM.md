@@ -92,6 +92,37 @@ So both field failures share one cause: on these hosts the pinned okhttp tier is
 provably clean copy is discoverable out-of-band. Tier membership is host-specific:
 okhttp is "app/clean" on Acast but "player/filled" on Audioboom and Simplecast.
 
+### 2026-07-05: Audioboom DAI leaks are per-show, not per-host (Pod Save America)
+
+First real-feed runs of the aggressive candidate pass (probe harness on the published
+0.0.3-SNAPSHOT), prompted by a consumer report that PSA's pre-roll ads produced no
+candidates. Pod Save America episode 8923605 ("Trump's 4th Threesome", declared
+`itunes:duration` 4562s, `enclosure length="0"` as usual for Audioboom):
+
+- **The pipeline behaves optimally — zero candidates is the correct output.** The pinned
+  probe resolved to the dynamic variant (**76,611,592 bytes** twice back-to-back — sticky,
+  ~2.9MB ≈ 3min of fill vs clean), was rightly rejected by the duration heuristic
+  (implied 134.4kbps > 128k × 1.015), and the leaked `fallback_url` static copy
+  (**73,695,496 bytes**, implied 129.2kbps ≈ 128k + ID3 art) validated → served directly.
+  The injected pre-roll never reaches the output file, so there is nothing to mark: log
+  shows `clean serving downloaded directly … no ad-cut needed`, `Complete` carried 0
+  candidates. Any ad still heard at the top of a clean-served PSA episode is baked into
+  the publisher's canonical upload (host-read), which byte evidence cannot see — that's
+  the fingerprinting idea in "Alternative-detection research", not a candidate-pass gap.
+- **PSA leaks no `m=[…]` and writes no CHAP frames**, unlike Nextlander on the same host:
+  its variant URL carries only `al`/`ab`/`ao` (`ao` = audio offset: 691,592 bytes, exactly
+  the ID3v2 tag size — the 690KB APIC artwork) plus an unparsed
+  `metadata=dist%3Dgeneral_run_ads%26one_min%3D1651592…` blob, and its static copy's ID3
+  tag has no CHAP frames at all. So DAI_SLOT/ID3_CHAPTER availability is **per-show
+  publisher configuration, not per-host** — Audioboom carrying a signal for one show
+  proves nothing about another. (`one_min=1651592` is noted but undeciphered — one
+  observation is too little to parse against.)
+- **Nextlander remains the known-results feed**: the same harness on its latest episode
+  (8946742, 4170s) emitted 24 candidates, all `ID3_CHAPTER` STARTs from its rich chapter
+  map (this special leaked no `m=`; the ear-verified episode 8923058 leaked two slots).
+  Chapter-heavy shows demonstrate the designed false-positive tradeoff: most of those 24
+  markers are content chapters, not ads — skippable suggestions, never cut points.
+
 ## Dead ends (each looked correct in byte analysis)
 
 ### #1 — Segment-length classification (shipped briefly, reverted)
@@ -286,6 +317,34 @@ pipeline tests). Per the meta-lesson, no candidate map has been ear-checked agai
 serving yet — consumers get the do-not-auto-cut warning in the API docs, and the first
 real-feed candidate lists (e.g. Nextlander's leaked slots at ~24:38 / ~44:42) should be
 spot-checked by ear before podcast-hacker surfaces markers to users.
+
+### 2026-07-05 field failure: whole-file read OOMed silently on Android
+
+First consumer deployment (podcast-hacker on Android) surfaced as "candidates work on
+desktop and on short episodes, but long episodes yield zero, silently":
+
+- The initial pass read the entire output file into one ByteArray. Nextlander episode 252
+  (8844s, **141,637,667-byte** clean copy, 55 CHAP frames intact on disk — verified by
+  pulling the device file) allocated over the Android per-app heap; the resulting
+  `OutOfMemoryError` was caught by the pass's own per-signal guards (they intentionally
+  catch `Throwable` so no signal can fail a download) and yielded an empty list. The
+  4170s / 66.8MB episode fit, which made the failure look episode-specific. Desktop JVMs
+  (multi-GB heaps) never reproduced it.
+- Two lessons already paid for: **the guards' silence has a diagnostic cost** — consumers
+  that discard the `log` lambda (podcast-hacker did) see nothing at all, so consumers
+  should wire `log` somewhere visible; and **whole-file byte arrays are not mobile-safe**
+  — episodes routinely exceed 100MB.
+- Fix (same day): the segment scan streams through a fixed 1MB refilling window
+  (`Mp3SegmentParser.scan(FileHandle)`; back-margin covers within-frame re-reads, which
+  are bounded by one mp3 frame < 2KB), and the chapter read fetches only the leading
+  ID3v2 tag (header + declared size, capped at 16MB against corrupt sizes). Detection is
+  byte-identical to the array path — window-equivalence is tested down to 4KB windows.
+- **Still open:** `AdCutter` reads both full copies into memory on the diff path (2× the
+  episode size at once). Unreproduced in the field so far only because big Audioboom
+  episodes take the clean-source path; a large episode on a diff-path host (e.g. Acast)
+  would hit the same Android ceiling — likely as a failed download rather than a silent
+  no-op, since the cutter is not guarded. Streaming the diff is a larger lift (the
+  rolling-hash diff wants random access); deferred until observed.
 
 ## MP3-level facts worth keeping
 
