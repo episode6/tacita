@@ -7,8 +7,10 @@ import com.episode6.tacita.systemFileSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
+import okio.FileHandle
 import okio.FileSystem
 import okio.Path
+import okio.use
 
 /**
  * The aggressive last-pass ad-boundary detector: gathers every signal that *might* mark an
@@ -19,8 +21,10 @@ import okio.Path
  * docs/ALGORITHM.md): candidates are unverified guesses and false positives are expected
  * by design.
  *
- * Reads the whole output file into memory once (same pattern and Int-offset size limit as
- * [AdCutter]); on the clean-source path this is the file's first full read.
+ * Never loads the whole file: the segment scan streams through a fixed window and the
+ * chapter read stops at the ID3v2 tag. Episodes routinely exceed 100MB and a single
+ * whole-file ByteArray silently OOMed inside the guards on Android (2026-07-05, see
+ * docs/ALGORITHM.md) — [AdCutter] still reads whole files, but only on the diff path.
  */
 internal class AdBoundaryDetector(
   private val fileSystem: FileSystem = systemFileSystem,
@@ -37,10 +41,9 @@ internal class AdBoundaryDetector(
     daiSlotsMs: List<Long>,
   ): List<AdBoundaryCandidate> = withContext(Dispatchers.IO) {
     val raw = mutableListOf<AdBoundaryCandidate>()
-    val data = guarded(file, "reading file") { fileSystem.read(file) { readByteArray() } }
-    if (data != null) {
-      raw += guarded(file, "segment scan") { segmentJoins(data) }.orEmpty()
-      raw += guarded(file, "id3 chapters") { chapterEdges(data) }.orEmpty()
+    guarded(file, "opening file") { fileSystem.openReadOnly(file) }?.use { handle ->
+      raw += guarded(file, "segment scan") { segmentJoins(handle) }.orEmpty()
+      raw += guarded(file, "id3 chapters") { chapterEdges(id3TagPrefix(handle)) }.orEmpty()
     }
     raw += guarded(file, "diff mapping") { diffCandidates(cutResult) }.orEmpty()
     raw += daiSlotsMs.map { AdBoundaryCandidate(timeMs = it, source = Source.DAI_SLOT, role = Role.JOIN) }
@@ -48,14 +51,44 @@ internal class AdBoundaryDetector(
   }
 
   /** Joins between independently-encoded segments; the first segment's start is not a join. */
-  private fun segmentJoins(data: ByteArray): List<AdBoundaryCandidate> =
-    mp3SegmentParser.scan(data).segments.zipWithNext().map { (_, next) ->
+  private fun segmentJoins(handle: FileHandle): List<AdBoundaryCandidate> =
+    mp3SegmentParser.scan(handle).segments.zipWithNext().map { (_, next) ->
       AdBoundaryCandidate(
         timeMs = (next.startSeconds * 1000).toLong(),
         source = Source.SEGMENT_BOUNDARY,
         role = Role.JOIN,
       )
     }
+
+  /**
+   * The leading ID3v2 tag (header plus declared size) — all [Id3FrameReader] needs, so the
+   * audio never has to be in memory. Capped so a corrupt declared size can't allocate
+   * unbounded; a truncated read surfaces via the caller's guard, same as an unreadable tag.
+   */
+  private fun id3TagPrefix(handle: FileHandle): ByteArray {
+    val header = ByteArray(ID3_HEADER_BYTES)
+    var at = 0
+    while (at < header.size) {
+      val read = handle.read(at.toLong(), header, at, header.size - at)
+      if (read <= 0) return ByteArray(0)
+      at += read
+    }
+    if (header[0] != 'I'.code.toByte() || header[1] != 'D'.code.toByte() || header[2] != '3'.code.toByte()) {
+      return header // no tag; Id3FrameReader will reject it the same way it always has
+    }
+    val total = (ID3_HEADER_BYTES.toLong() + id3Syncsafe(header, 6))
+      .coerceAtMost(handle.size())
+      .coerceAtMost(MAX_ID3_TAG_BYTES)
+      .toInt()
+    val prefix = header.copyOf(total)
+    var filled = ID3_HEADER_BYTES
+    while (filled < total) {
+      val read = handle.read(filled.toLong(), prefix, filled, total - filled)
+      if (read <= 0) break
+      filled += read
+    }
+    return prefix
+  }
 
   /**
    * Chapters tile the file, so every start plus the final end covers each edge exactly
@@ -119,5 +152,8 @@ internal class AdBoundaryDetector(
   private companion object {
     const val MERGE_WINDOW_MS = 250L
     const val MAX_CANDIDATES = 64
+    const val ID3_HEADER_BYTES = 10
+    // real-world tags top out around 1-2MB (cover art); syncsafe can claim up to 256MB
+    const val MAX_ID3_TAG_BYTES = 16L * 1024 * 1024
   }
 }
