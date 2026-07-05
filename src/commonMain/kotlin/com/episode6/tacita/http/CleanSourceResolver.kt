@@ -40,12 +40,24 @@ internal class CleanSourceResolver(
     val contentLength: Long,
   )
 
+  data class Resolution(
+    /** A verified-clean serving, or null when nothing validated (fall back to the diff). */
+    val cleanSource: CleanSource?,
+    /**
+     * Ad-insertion slot positions (ms, in the host's original/clean timeline) leaked by the
+     * redirect chain; empty when none leaked. Surfaced as [com.episode6.tacita.AdBoundaryCandidate]s.
+     */
+    val daiSlotsMs: List<Long>,
+  )
+
   suspend fun resolve(
     url: String,
     declaredEnclosureBytes: Long?,
     expectedDurationSeconds: Long?,
-  ): CleanSource? {
-    if ((declaredEnclosureBytes ?: 0) <= 0 && (expectedDurationSeconds ?: 0) <= 0) return null
+  ): Resolution {
+    if ((declaredEnclosureBytes ?: 0) <= 0 && (expectedDurationSeconds ?: 0) <= 0) {
+      return Resolution(cleanSource = null, daiSlotsMs = emptyList())
+    }
 
     fun validated(candidateUrl: String, userAgent: String?, probe: Downloader.ProbeResult?): CleanSource? {
       val length = probe?.contentLength ?: return null
@@ -54,26 +66,26 @@ internal class CleanSourceResolver(
     }
 
     val pinned = probeQuietly(url, userAgent = null)
-    pinned?.finalUrl?.let(::logDaiMetadata)
+    val daiSlotsMs = pinned?.finalUrl?.let(::daiSlotsFrom).orEmpty()
     validated(url, null, pinned)?.let {
       log("CleanSourceResolver: pinned-tier serving is already clean (${it.contentLength} bytes)")
-      return it
+      return Resolution(it, daiSlotsMs)
     }
 
     pinned?.finalUrl?.let(::fallbackUrlFrom)?.let { fallback ->
       validated(fallback, null, probeQuietly(fallback, userAgent = null))?.let {
         log("CleanSourceResolver: using static fallback from redirect chain (${it.contentLength} bytes)")
-        return it
+        return Resolution(it, daiSlotsMs)
       }
     }
 
     for (userAgent in botUserAgents) {
       validated(url, userAgent, probeQuietly(url, userAgent))?.let {
         log("CleanSourceResolver: bot-tier serving via \"$userAgent\" is clean (${it.contentLength} bytes)")
-        return it
+        return Resolution(it, daiSlotsMs)
       }
     }
-    return null
+    return Resolution(cleanSource = null, daiSlotsMs = daiSlotsMs)
   }
 
   // a probe failure only means this candidate is unavailable, never that the download fails
@@ -90,12 +102,20 @@ internal class CleanSourceResolver(
   }.getOrNull()?.takeIf { it.startsWith("http") }
 
   // Audioboom leaks DAI metadata in its resolved urls: m=[slot positions ms],
-  // o/al=original duration ms, ab=bitrate kbps. Diagnostics only for now — a future
-  // strategy could turn slot positions into cut hints (see docs/ALGORITHM.md).
-  private fun logDaiMetadata(finalUrl: String) {
-    val params = runCatching { Url(finalUrl).parameters }.getOrNull() ?: return
+  // o/al=original duration ms, ab=bitrate kbps. The m= slot positions become ad-boundary
+  // candidates; only the pinned probe's final url is parsed — that's where Audioboom's
+  // variant url shows up (the fallback/bot probes' chains have never carried it).
+  private fun daiSlotsFrom(finalUrl: String): List<Long> {
+    val params = runCatching { Url(finalUrl).parameters }.getOrNull() ?: return emptyList()
     val found = DAI_METADATA_KEYS.mapNotNull { key -> params[key]?.let { "$key=$it" } }
     if (found.isNotEmpty()) log("CleanSourceResolver: dai metadata in resolved url: $found")
+    return params["m"]?.removePrefix("[")?.removeSuffix("]")
+      ?.split(',')
+      ?.mapNotNull { it.trim().toLongOrNull() }
+      ?.filter { it > 0 }
+      ?.distinct()
+      ?.sorted()
+      .orEmpty()
   }
 }
 

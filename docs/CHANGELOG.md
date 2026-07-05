@@ -2,6 +2,22 @@
 
 ### v0.0.3-SNAPSHOT - Unreleased
 
+- **Ad-boundary candidates on `Complete`** (API break): `DownloadState.Complete` is now a
+  `data class` carrying `adBoundaryCandidates: List<AdBoundaryCandidate>` — an aggressive,
+  read-only last-detection pass that surfaces points in the output file that *might* be an
+  ad start/end (always empty when `cutAds` is false). Candidates come from four signals:
+  stitch/segment joins, the diff (applied splice points *and* ranges the guards refused to
+  cut), ad-slot positions leaked in the host's redirect chain, and host-written ID3 CHAP
+  frame edges. The pass never modifies the file and never fails the download. Candidates
+  are **unverified by design** — render them as skippable chapter markers only; never
+  auto-cut or auto-skip on them (see docs/ALGORITHM.md). Callers matching
+  `DownloadState.Complete` without `is` (or comparing with `==`) must update; `Complete`
+  also now arrives after one extra read+scan of the output file
+- `AdCutter.Result` (internal) now carries the frame-snapped cut list on both `AdsCut` and
+  `Skipped`; `CleanSourceResolver` (internal) returns leaked DAI slot positions instead of
+  only logging them; new internal `Id3FrameReader` extracted from `Id3ChapterShifter`
+  (shifting behavior unchanged)
+
 ### v0.0.2 - Released 7/5/2026
 
 - **Clean-source discovery**: `Tacita.downloadPodcast` gained optional

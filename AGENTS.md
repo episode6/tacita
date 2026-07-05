@@ -28,14 +28,22 @@ This is a single-module Kotlin Multiplatform project rooted at the top of the re
     (private `TacitaImpl`); `Tacita.withClient(reuse, log, factory)` returns an instance with a
     custom http-client factory. reuse=false (default): factory returns a NEW client per download
     and tacita closes it; reuse=true: factory invoked lazily once, client shared and NEVER
-    closed. log (default no-op) receives diagnostic lines (one per ad-cut pass with its outcome).
+    closed. log (default no-op) receives diagnostic lines (ad-cut outcomes, clean-source
+    resolution, ad-boundary detection).
     `Tacita.withLogger(log)` returns an instance with the default client factory + custom logger.
-    Also public: the `DownloadState` sealed class and `FileAlreadyExistsException`.
+    Also public: the `DownloadState` sealed class (whose terminal `Complete` carries
+    `List<AdBoundaryCandidate>`), `AdBoundaryCandidate` and `FileAlreadyExistsException`.
     Everything below is `internal`
   - `http/Downloader.kt` — episode downloads via ktor + okio, progress as a `Flow<Float>`
+  - `http/CleanSourceResolver.kt` — probes for a provably-clean serving; also reports leaked
+    DAI slot positions
   - `audio/AdCutter.kt` — lossless removal of dynamically-injected ads by diffing two copies
+  - `audio/AdBoundaryDetector.kt` — read-only aggressive pass gathering `AdBoundaryCandidate`s
+    from the final output file (never modifies it, never fails the download)
   - `audio/Mp3SegmentParser.kt` — splits an mp3 stream into its independently-encoded segments
   - `audio/Id3ChapterShifter.kt` — shifts ID3 CHAP frames to account for cut ranges
+  - `audio/Id3FrameReader.kt` — read-only ID3v2 frame/CHAP walker shared by the shifter and
+    the boundary detector
 - `src/jvmMain/` + `src/nativeMain/` — a single internal expect/actual (`systemFileSystem`),
   needed because okio has no common declaration of `FileSystem.SYSTEM`
 - `src/jvmTest/` — tests (use real mp3 fixtures in `src/jvmTest/resources/audio/`)

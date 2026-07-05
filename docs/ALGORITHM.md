@@ -240,12 +240,60 @@ a same-tier reference (including waveform-level ideas). Findings, so nobody re-r
   guards-skip-the-file blind spot. Large lift (mp3 decoder across all KMP targets);
   deliberately deferred until such a host is actually observed. None is today.
 
+## The aggressive candidate pass (2026-07-05, additive)
+
+`AdBoundaryDetector` is a read-only last pass over the final output file that emits
+`AdBoundaryCandidate(timeMs, source, role)` markers on `DownloadState.Complete` — points
+that *might* be an ad start/end, for consumers to render as skippable chapter markers.
+
+**Why this doesn't violate the under-cut invariant:** the invariant governs bytes removed,
+and this pass removes none — it cannot touch the file, cannot fail the download (every
+signal is independently guarded), and runs after the cutter has already done whatever the
+guards allowed. Because a false positive costs the listener one bogus marker instead of
+lost show content, the pass is deliberately aggressive where the cutter is deliberately
+conservative. The two live on opposite sides of the meta-lesson: byte-shaped evidence is
+good enough to *suggest*, never to *cut*.
+
+Signals surfaced (all data the pipeline already computed and previously discarded):
+
+1. **Segment joins** (`Mp3SegmentParser.scan`, first production use): tag-frame stitch
+   boundaries in the output. Dead end #1 stands unchanged — segment structure still
+   classifies nothing; joins are emitted as `JOIN` candidates, not ad verdicts.
+2. **The diff** (`AdCutter.Result` now carries its frame-snapped cut list): applied cuts
+   collapse to single splice-point `JOIN`s mapped into the post-cut timeline (each splice
+   shifts back by the material removed before it); guard-refused (`Skipped`) ranges — the
+   sticky-fill/garbage-reference cases where the file stays untouched — map directly to
+   `START`/`END` pairs. This is the first time the guards' refusals are visible to
+   consumers at all.
+3. **Leaked DAI slots** (`CleanSourceResolver` now returns the parsed `m=[…]` positions it
+   previously only logged): emitted as `JOIN`s in the host's original/clean timeline. On
+   the clean-source path that maps 1:1 to the output; on the diff path they're emitted
+   as-is — the post-cut output approximates the clean timeline, and any drift is an
+   accepted false positive. Slots only exist when the caller passed feed metadata (the
+   resolver never probes without it — no new network requests were added).
+4. **Host-written CHAP edges** (`Id3FrameReader`, extracted read-only from
+   `Id3ChapterShifter`; shifting behavior unchanged): every chapter start plus the final
+   end, read from the output file's tag *after* any CHAP shifting, so times are already in
+   the output timeline. Audioboom labels ad slots this way.
+
+Hygiene: near-duplicates within one source merge (250ms window, earliest wins); different
+sources are never merged — two signals agreeing at the same timestamp is corroboration the
+consumer should see. The list is capped at 64 (a wholesale-disagreeing reference can
+produce hundreds of `Skipped` ranges; aggressive ≠ unbounded) and sorted by time.
+
+**Verification status:** unit/e2e coverage only (synthetic fixtures + the MockEngine
+pipeline tests). Per the meta-lesson, no candidate map has been ear-checked against a real
+serving yet — consumers get the do-not-auto-cut warning in the API docs, and the first
+real-feed candidate lists (e.g. Nextlander's leaked slots at ~24:38 / ~44:42) should be
+spot-checked by ear before podcast-hacker surfaces markers to users.
+
 ## MP3-level facts worth keeping
 
-- Tag-frame discriminator (used by `Mp3SegmentParser.scan`, retained for diagnostics; the
-  cutter no longer depends on it): tag string within the first 200 bytes of the frame body
-  AND fill-byte (0x00/0x55/0xAA) fraction > 0.10. Measured: audio frames max ~0.13, mean
-  0.024; tag frames 0.12–0.92.
+- Tag-frame discriminator (used by `Mp3SegmentParser.scan`; the cutter no longer depends
+  on it, but since 2026-07-05 the aggressive candidate pass uses it for segment-join
+  markers): tag string within the first 200 bytes of the frame body AND fill-byte
+  (0x00/0x55/0xAA) fraction > 0.10. Measured: audio frames max ~0.13, mean 0.024; tag
+  frames 0.12–0.92.
 - **libmp3lame writes "LAME<version>" + 0xAA filler into its final flush frames**, which
   matches the tag-frame signature and creates a false boundary ~0.15s before EOF. The
   parser merges a trailing segment < 2s (`TRAILING_FLUSH_MERGE_SECONDS`) into the previous
@@ -290,9 +338,10 @@ a same-tier reference (including waveform-level ideas). Findings, so nobody re-r
   (playbook step 5). **Ear-verified 2026-07-05 (ghackett)**: Nextlander's static
   fallback is clean at both leaked mid-roll slots (~24:38 and ~44:42), and Conan's
   bot-tier copy has no pre-roll ads — the servings that previously carried fill.
-- Audioboom's leaked `m=[…]` slot positions are logged (`CleanSourceResolver`) but
-  unused; if the static fallback ever disappears they're the obvious next input for a
-  slot-targeted diff.
+- Audioboom's leaked `m=[…]` slot positions are surfaced as ad-boundary *candidates*
+  (2026-07-05, see the aggressive candidate pass) but still don't drive any cutting; if
+  the static fallback ever disappears they're the obvious next input for a slot-targeted
+  diff.
 - If a host starts varying content encoding per request (re-encoding, not stitching),
   byte alignment finds no anchors and the guards skip the file — safe but ineffective.
   Detecting that case would need decoded-domain comparison (a large, unproven step).
