@@ -39,6 +39,29 @@ history; the private `~/worklogs` entries hold the raw session logs).
 5. Tacita pins the default UA (`okhttp/4.12.0`) because the served bytes — and every
    conclusion in this document — depend on the tier.
 
+### Field observations from podcast-hacker (2026-07-04, tacita 0.0.1)
+
+First real-consumer data, from podcast-hacker's stage-6 verification (okhttp engine, so
+app tier; fresh installs, so every download was an immediate back-to-back
+primary+reference pair — podcast-hacker v0 also deletes references after each download,
+guaranteeing that pairing on every run):
+
+- **"Conan O'Brien Needs A Friend"** (Team Coco/Earwolf; audio via podtrac/claritas
+  redirects to `stitcher.simplecastaudio.com` — a Simplecast stitching host not previously
+  covered by this doc): download + cut pass completed cleanly, but injected ads audibly
+  survived in the output (ghackett, ear check). Consistent with either (a) sticky
+  short-term fill on a host that DOES inject on the app tier — the back-to-back blind
+  spot — or (b) ads baked into the app-tier stitch. Distinguishing needs a time-separated
+  same-tier pair against this feed; either way it's the first observed host where the app
+  tier serves ads that survive an immediate-pair diff.
+- **"My Dad Wrote A Porno"** (Acast): outputs were ad-free in the same flow (ghackett,
+  ear check). Given the immediate pairing, this is most consistent with Acast's app-tier
+  canonical stitch (nothing injected to cut) rather than a demonstrated diff-cut.
+
+Takeaway for consumers: the back-to-back blind spot isn't hypothetical — reference age is
+the accuracy lever, so apps should persist references across sessions (or otherwise
+separate the pair in time) rather than re-downloading both copies together.
+
 ## Dead ends (each looked correct in byte analysis)
 
 ### #1 — Segment-length classification (shipped briefly, reverted)
@@ -169,6 +192,8 @@ duration/structure alone re-opens a failure mode that was ear-verified twice.
   insurance for when that changes, plus an active cutter for player-tier copies.
 - Back-to-back downloads get identical fill → immediate primary+reference double-download
   yields `NoAdsFound` on a filled tier. Persisted references fix this across sessions.
+  Confirmed in the field 2026-07-04: podcast-hacker's immediate pairs left Simplecast
+  (Conan) ads uncut — see the serving-model field observations.
 - If a host starts varying content encoding per request (re-encoding, not stitching),
   byte alignment finds no anchors and the guards skip the file — safe but ineffective.
   Detecting that case would need decoded-domain comparison (a large, unproven step).
