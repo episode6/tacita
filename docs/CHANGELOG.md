@@ -2,6 +2,16 @@
 
 ### v0.0.3-SNAPSHOT - Unreleased
 
+- **Confidence scores on ad-boundary candidates** (API break): `AdBoundaryCandidate` gains
+  a required `confidence: Float` in `0.0..1.0` — an uncalibrated heuristic ranking of how
+  strongly the evidence suggests a real ad boundary (applied diff cuts 0.9 > leaked DAI
+  slots 0.8 > guard-refused diff ranges 0.65 > segment joins 0.4 > chapter edges 0.3;
+  candidates corroborated by another source within 250ms combine as independent evidence
+  and rank higher). The 64-candidate cap now keeps the highest-confidence candidates
+  instead of the earliest. Ordering is meaningful, absolute values are not, and no value
+  licenses auto-skipping (see docs/ALGORITHM.md). Callers constructing candidates (tests)
+  must pass `confidence`; construction outside `0.0..1.0` throws
+
 - **Ad-boundary candidates on `Complete`** (API break): `DownloadState.Complete` is now a
   `data class` carrying `adBoundaryCandidates: List<AdBoundaryCandidate>` — an aggressive,
   read-only last-detection pass that surfaces points in the output file that *might* be an

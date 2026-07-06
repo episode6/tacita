@@ -46,7 +46,9 @@ internal class AdBoundaryDetector(
       raw += guarded(file, "id3 chapters") { chapterEdges(id3TagPrefix(handle)) }.orEmpty()
     }
     raw += guarded(file, "diff mapping") { diffCandidates(cutResult) }.orEmpty()
-    raw += daiSlotsMs.map { AdBoundaryCandidate(timeMs = it, source = Source.DAI_SLOT, role = Role.JOIN) }
+    raw += daiSlotsMs.map {
+      AdBoundaryCandidate(timeMs = it, source = Source.DAI_SLOT, role = Role.JOIN, confidence = CONFIDENCE_DAI_SLOT)
+    }
     finish(file, raw)
   }
 
@@ -57,6 +59,7 @@ internal class AdBoundaryDetector(
         timeMs = (next.startSeconds * 1000).toLong(),
         source = Source.SEGMENT_BOUNDARY,
         role = Role.JOIN,
+        confidence = CONFIDENCE_SEGMENT_BOUNDARY,
       )
     }
 
@@ -97,8 +100,14 @@ internal class AdBoundaryDetector(
   private fun chapterEdges(data: ByteArray): List<AdBoundaryCandidate> {
     val chapters = id3FrameReader.chapters(data)
     if (chapters.isEmpty()) return emptyList()
-    return chapters.map { AdBoundaryCandidate(timeMs = it.startMs, source = Source.ID3_CHAPTER, role = Role.START) } +
-      AdBoundaryCandidate(timeMs = chapters.maxOf { it.endMs }, source = Source.ID3_CHAPTER, role = Role.END)
+    return chapters.map {
+      AdBoundaryCandidate(timeMs = it.startMs, source = Source.ID3_CHAPTER, role = Role.START, confidence = CONFIDENCE_ID3_CHAPTER)
+    } + AdBoundaryCandidate(
+      timeMs = chapters.maxOf { it.endMs },
+      source = Source.ID3_CHAPTER,
+      role = Role.END,
+      confidence = CONFIDENCE_ID3_CHAPTER,
+    )
   }
 
   private fun diffCandidates(cutResult: AdCutter.Result?): List<AdBoundaryCandidate> = when (cutResult) {
@@ -108,14 +117,14 @@ internal class AdBoundaryDetector(
       cutResult.cuts.map { cut ->
         val spliceMs = ((cut.fromSeconds - removedSeconds) * 1000).toLong()
         removedSeconds += cut.seconds
-        AdBoundaryCandidate(timeMs = spliceMs, source = Source.DIFF_CUT, role = Role.JOIN)
+        AdBoundaryCandidate(timeMs = spliceMs, source = Source.DIFF_CUT, role = Role.JOIN, confidence = CONFIDENCE_DIFF_APPLIED)
       }
     }
     // the guards refused these cuts, so the ad-shaped ranges are still in the (untouched) file
     is AdCutter.Result.Skipped -> cutResult.cuts.flatMap { cut ->
       listOf(
-        AdBoundaryCandidate(timeMs = (cut.fromSeconds * 1000).toLong(), source = Source.DIFF_CUT, role = Role.START),
-        AdBoundaryCandidate(timeMs = (cut.toSeconds * 1000).toLong(), source = Source.DIFF_CUT, role = Role.END),
+        AdBoundaryCandidate(timeMs = (cut.fromSeconds * 1000).toLong(), source = Source.DIFF_CUT, role = Role.START, confidence = CONFIDENCE_DIFF_SKIPPED),
+        AdBoundaryCandidate(timeMs = (cut.toSeconds * 1000).toLong(), source = Source.DIFF_CUT, role = Role.END, confidence = CONFIDENCE_DIFF_SKIPPED),
       )
     }
     is AdCutter.Result.NoAdsFound, null -> emptyList()
@@ -123,9 +132,11 @@ internal class AdBoundaryDetector(
 
   /**
    * Near-duplicates within a source are merged (earliest wins); candidates from *different*
-   * sources are never merged — agreement between signals is corroboration the consumer
-   * wants to see. A garbage-scale diff (a wholesale-disagreeing reference) can produce
-   * hundreds of ranges, so the list is capped: aggressive, not unbounded.
+   * sources are never merged — agreement between signals is corroboration, and it raises
+   * each agreeing candidate's confidence (independent-evidence combination: the boosted
+   * value is `1 - Π(1 - cᵢ)` over the agreeing candidates). A garbage-scale diff (a
+   * wholesale-disagreeing reference) can produce hundreds of ranges, so the list is
+   * capped — keeping the highest-confidence candidates, not the earliest.
    */
   private fun finish(file: Path, raw: List<AdBoundaryCandidate>): List<AdBoundaryCandidate> {
     val merged = raw.groupBy { it.source }.values.flatMap { ofSource ->
@@ -135,10 +146,22 @@ internal class AdBoundaryDetector(
       }
       kept
     }
-    val sorted = merged.sortedWith(compareBy({ it.timeMs }, { it.source.ordinal }))
-    if (sorted.size <= MAX_CANDIDATES) return sorted
-    log("AdBoundaryDetector: ${file.name}: truncating ${sorted.size} candidates to $MAX_CANDIDATES")
-    return sorted.take(MAX_CANDIDATES)
+    val boosted = merged.map { candidate ->
+      val agreeing = merged.filter {
+        it.source != candidate.source && (it.timeMs - candidate.timeMs) in -MERGE_WINDOW_MS..MERGE_WINDOW_MS
+      }
+      if (agreeing.isEmpty()) return@map candidate
+      val disbelief = (agreeing + candidate).fold(1.0) { acc, c -> acc * (1.0 - c.confidence) }
+      candidate.copy(confidence = (1.0 - disbelief).toFloat().coerceIn(0f, 1f))
+    }
+    val capped = if (boosted.size <= MAX_CANDIDATES) {
+      boosted
+    } else {
+      log("AdBoundaryDetector: ${file.name}: truncating ${boosted.size} candidates to $MAX_CANDIDATES")
+      boosted.sortedWith(compareByDescending<AdBoundaryCandidate> { it.confidence }.thenBy { it.timeMs })
+        .take(MAX_CANDIDATES)
+    }
+    return capped.sortedWith(compareBy({ it.timeMs }, { it.source.ordinal }))
   }
 
   // a candidate list is best-effort diagnostics; no signal is worth failing a download over
@@ -155,5 +178,16 @@ internal class AdBoundaryDetector(
     const val ID3_HEADER_BYTES = 10
     // real-world tags top out around 1-2MB (cover art); syncsafe can claim up to 256MB
     const val MAX_ID3_TAG_BYTES = 16L * 1024 * 1024
+
+    // Uncalibrated priors, ordered by evidence strength (docs/ALGORITHM.md): an applied
+    // cut proved injected material; a guard-refused range is real byte-diff evidence the
+    // cutter declined to act on; a DAI slot is the host's own ad-server placement; a
+    // stitch join marks *an* encode boundary (ads and content assembly alike — dead end
+    // 1); a chapter edge is usually a content chapter that only sometimes labels an ad.
+    const val CONFIDENCE_DIFF_APPLIED = 0.9f
+    const val CONFIDENCE_DAI_SLOT = 0.8f
+    const val CONFIDENCE_DIFF_SKIPPED = 0.65f
+    const val CONFIDENCE_SEGMENT_BOUNDARY = 0.4f
+    const val CONFIDENCE_ID3_CHAPTER = 0.3f
   }
 }
