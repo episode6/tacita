@@ -76,12 +76,18 @@ ignored — a false reject just falls back to the diff pipeline above.
 
 The cutter is deliberately conservative: bytes it can't *prove* are injected ads stay in the
 file. As an aggressive counterpart, when `cutAds` is true the terminal `DownloadState.Complete`
-carries `adBoundaryCandidates` — a list of `AdBoundaryCandidate(timeMs, source, role)` points in
-the output file's timeline that *might* be an ad start/end. They're gathered by a read-only pass
-over the final file from every signal the pipeline saw: joins between independently-encoded mp3
-segments, the diff (splice points where ads were cut, and ad-shaped ranges the safety guards
-refused to cut), ad-insertion slot positions leaked by the host's redirect chain, and ID3
-chapter edges written by the host.
+carries `adBoundaryCandidates` — a list of `AdBoundaryCandidate(timeMs, source, role, confidence)`
+points in the output file's timeline that *might* be an ad start/end. They're gathered by a
+read-only pass over the final file from every signal the pipeline saw: joins between
+independently-encoded mp3 segments, the diff (splice points where ads were cut, and ad-shaped
+ranges the safety guards refused to cut), ad-insertion slot positions leaked by the host's
+redirect chain, and ID3 chapter edges written by the host.
+
+`confidence` (`0.0..1.0`) ranks how strongly the evidence suggests a real ad boundary: applied
+diff cuts rank highest, then leaked ad slots, then guard-refused diff ranges, then segment
+joins, then chapter edges — and candidates corroborated by a second signal at the same
+timestamp rank above uncorroborated ones. The values are uncalibrated heuristics: use them to
+sort or threshold a skip list, not as probabilities (and not as a license to auto-skip).
 
 **Candidates are unverified guesses, and false positives are expected by design.** Render them
 as skippable chapter markers so a listener can jump past a suspected ad — but never auto-cut or

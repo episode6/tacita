@@ -92,6 +92,37 @@ So both field failures share one cause: on these hosts the pinned okhttp tier is
 provably clean copy is discoverable out-of-band. Tier membership is host-specific:
 okhttp is "app/clean" on Acast but "player/filled" on Audioboom and Simplecast.
 
+### 2026-07-05: Audioboom DAI leaks are per-show, not per-host (Pod Save America)
+
+First real-feed runs of the aggressive candidate pass (probe harness on the published
+0.0.3-SNAPSHOT), prompted by a consumer report that PSA's pre-roll ads produced no
+candidates. Pod Save America episode 8923605 ("Trump's 4th Threesome", declared
+`itunes:duration` 4562s, `enclosure length="0"` as usual for Audioboom):
+
+- **The pipeline behaves optimally — zero candidates is the correct output.** The pinned
+  probe resolved to the dynamic variant (**76,611,592 bytes** twice back-to-back — sticky,
+  ~2.9MB ≈ 3min of fill vs clean), was rightly rejected by the duration heuristic
+  (implied 134.4kbps > 128k × 1.015), and the leaked `fallback_url` static copy
+  (**73,695,496 bytes**, implied 129.2kbps ≈ 128k + ID3 art) validated → served directly.
+  The injected pre-roll never reaches the output file, so there is nothing to mark: log
+  shows `clean serving downloaded directly … no ad-cut needed`, `Complete` carried 0
+  candidates. Any ad still heard at the top of a clean-served PSA episode is baked into
+  the publisher's canonical upload (host-read), which byte evidence cannot see — that's
+  the fingerprinting idea in "Alternative-detection research", not a candidate-pass gap.
+- **PSA leaks no `m=[…]` and writes no CHAP frames**, unlike Nextlander on the same host:
+  its variant URL carries only `al`/`ab`/`ao` (`ao` = audio offset: 691,592 bytes, exactly
+  the ID3v2 tag size — the 690KB APIC artwork) plus an unparsed
+  `metadata=dist%3Dgeneral_run_ads%26one_min%3D1651592…` blob, and its static copy's ID3
+  tag has no CHAP frames at all. So DAI_SLOT/ID3_CHAPTER availability is **per-show
+  publisher configuration, not per-host** — Audioboom carrying a signal for one show
+  proves nothing about another. (`one_min=1651592` is noted but undeciphered — one
+  observation is too little to parse against.)
+- **Nextlander remains the known-results feed**: the same harness on its latest episode
+  (8946742, 4170s) emitted 24 candidates, all `ID3_CHAPTER` STARTs from its rich chapter
+  map (this special leaked no `m=`; the ear-verified episode 8923058 leaked two slots).
+  Chapter-heavy shows demonstrate the designed false-positive tradeoff: most of those 24
+  markers are content chapters, not ads — skippable suggestions, never cut points.
+
 ## Dead ends (each looked correct in byte analysis)
 
 ### #1 — Segment-length classification (shipped briefly, reverted)
@@ -280,6 +311,33 @@ Hygiene: near-duplicates within one source merge (250ms window, earliest wins); 
 sources are never merged — two signals agreeing at the same timestamp is corroboration the
 consumer should see. The list is capped at 64 (a wholesale-disagreeing reference can
 produce hundreds of `Skipped` ranges; aggressive ≠ unbounded) and sorted by time.
+
+### Confidence model (2026-07-05, additive)
+
+Each candidate carries `confidence: Float` in `0..1` so consumers can sort or threshold a
+skip list. The values are **uncalibrated priors chosen by evidence semantics, not measured
+error rates** — per the meta-lesson, nothing here has been ear-calibrated, so only the
+*ordering* is defensible:
+
+| signal | base | reasoning |
+|---|---|---|
+| `DIFF_CUT` applied splice | 0.9 | the diff *proved* injected material and the cutter acted |
+| `DAI_SLOT` | 0.8 | the host's own ad server placed a slot here |
+| `DIFF_CUT` guard-refused range | 0.65 | real byte-diff evidence the guards declined to act on |
+| `SEGMENT_BOUNDARY` | 0.4 | an encode join — ads and content assembly alike (dead end 1) |
+| `ID3_CHAPTER` edge | 0.3 | usually a content chapter; only sometimes labels an ad slot |
+
+Corroboration: candidates from different sources within the 250ms merge window combine as
+independent evidence — each agreeing candidate's confidence becomes `1 - Π(1 - cᵢ)` (e.g. a
+segment join confirmed by a DAI slot: `1-(0.6)(0.2)` = 0.88). The 64-cap now keeps the
+highest-confidence candidates rather than the earliest, so a garbage-scale diff can't crowd
+out a corroborated marker late in the episode.
+
+Calibration path (open): the priors could be fit against ear-verified maps once enough
+exist (the Nextlander "First Break"/"Second Break" chapters are obvious anchors — a
+title-aware chapter signal is a cheap future upgrade). Until then consumers should treat
+the values as ordinal, and no confidence — including 1.0 — licenses auto-cutting or
+auto-skipping.
 
 **Verification status:** unit/e2e coverage only (synthetic fixtures + the MockEngine
 pipeline tests). Per the meta-lesson, no candidate map has been ear-checked against a real
