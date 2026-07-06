@@ -2,7 +2,7 @@
 <html class="no-js" lang="en">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
-    <title>AdBoundaryCandidate</title>
+    <title>confidence</title>
     <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg">
         <script>var pathToRoot = "../../../";</script>
     <script>document.documentElement.classList.replace("no-js", "js");</script>
@@ -103,12 +103,12 @@
         </nav>
         <div id="resizer" class="resizer" data-item-type="BAR"></div>
         <div id="main" data-item-type="SECTION" role="main">
-<div class="main-content" data-page-type="member" id="content" pageIds="tacita::com.episode6.tacita/AdBoundaryCandidate/AdBoundaryCandidate/#kotlin.Long#com.episode6.tacita.AdBoundaryCandidate.Source#com.episode6.tacita.AdBoundaryCandidate.Role#kotlin.Float/PointingToDeclaration//1558683979">
-  <div class="breadcrumbs"><a href="../../../index.html">tacita</a><span class="delimiter">/</span><a href="../index.html">com.episode6.tacita</a><span class="delimiter">/</span><a href="index.html">AdBoundaryCandidate</a><span class="delimiter">/</span><span class="current">AdBoundaryCandidate</span></div>
+<div class="main-content" data-page-type="member" id="content" pageIds="tacita::com.episode6.tacita/AdBoundaryCandidate/confidence/#/PointingToDeclaration//1558683979">
+  <div class="breadcrumbs"><a href="../../../index.html">tacita</a><span class="delimiter">/</span><a href="../index.html">com.episode6.tacita</a><span class="delimiter">/</span><a href="index.html">AdBoundaryCandidate</a><span class="delimiter">/</span><span class="current">confidence</span></div>
   <div class="cover ">
-    <h1 class="cover"><span>Ad</span><wbr></wbr><span>Boundary</span><wbr></wbr><span><span>Candidate</span></span></h1>
+    <h1 class="cover"><span><span>confidence</span></span></h1>
   </div>
-  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":/commonMain"><div class="symbol monospace"><span class="token keyword">constructor</span><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">timeMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token punctuation">, </span></span><span class="parameter ">source<span class="token operator">: </span><a href="-source/index.html">AdBoundaryCandidate.Source</a><span class="token punctuation">, </span></span><span class="parameter ">role<span class="token operator">: </span><a href="-role/index.html">AdBoundaryCandidate.Role</a><span class="token punctuation">, </span></span><span class="parameter ">confidence<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-float/index.html">Float</a></span></span><span class="token punctuation">)</span></div></div></div>
+  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":/commonMain"><div class="symbol monospace"><span class="token keyword">val </span><a href="confidence.html">confidence</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-float/index.html">Float</a></div><p class="paragraph">How strongly the evidence suggests a real ad boundary, in <code class="lang-kotlin">0.0..1.0</code>. Values are <strong>uncalibrated heuristic priors</strong> (see docs/ALGORITHM.md): the <i>ordering</i> is meaningful — an applied diff cut outranks a leaked DAI slot outranks a chapter edge, and candidates corroborated by a second signal within 250ms rank above uncorroborated ones — but the absolute numbers carry no probability semantics and no ear-verified calibration. Useful for sorting or thresholding a skip list; never a license to auto-cut or auto-skip, at any value.</p></div></div>
 </div>
     <div class="footer">
         <div class="footer--container">

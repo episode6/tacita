@@ -107,24 +107,24 @@
   <div class="breadcrumbs"><a href="../../../index.html">tacita</a><span class="delimiter">/</span><a href="../index.html">com.episode6.tacita</a><span class="delimiter">/</span><span class="current">AdBoundaryCandidate</span></div>
   <div class="cover ">
     <h1 class="cover"><span>Ad</span><wbr></wbr><span>Boundary</span><wbr></wbr><span><span>Candidate</span></span></h1>
-    <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":/commonMain"><div class="symbol monospace"><span class="token keyword">data </span><span class="token keyword">class </span><a href="index.html">AdBoundaryCandidate</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter "><span class="token keyword">val </span>timeMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>source<span class="token operator">: </span><a href="-source/index.html">AdBoundaryCandidate.Source</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>role<span class="token operator">: </span><a href="-role/index.html">AdBoundaryCandidate.Role</a></span></span><span class="token punctuation">)</span></div><p class="paragraph">A point in the final output file's timeline that <i>might</i> be the start or end of an ad.</p><p class="paragraph">Candidates are the aggressive counterpart to the conservative ad-cutter: they surface every ad-shaped signal the pipeline saw — including the ones the cutter's guards refused to act on — without ever modifying the file. They are UNVERIFIED guesses and false positives are expected by design: byte-shaped evidence about ads is unreliable (see docs/ALGORITHM.md), so render candidates as skippable chapter markers only and never auto-cut or auto-skip on them.</p></div></div>
+    <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":/commonMain"><div class="symbol monospace"><span class="token keyword">data </span><span class="token keyword">class </span><a href="index.html">AdBoundaryCandidate</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter "><span class="token keyword">val </span>timeMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>source<span class="token operator">: </span><a href="-source/index.html">AdBoundaryCandidate.Source</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>role<span class="token operator">: </span><a href="-role/index.html">AdBoundaryCandidate.Role</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>confidence<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-float/index.html">Float</a></span></span><span class="token punctuation">)</span></div><p class="paragraph">A point in the final output file's timeline that <i>might</i> be the start or end of an ad.</p><p class="paragraph">Candidates are the aggressive counterpart to the conservative ad-cutter: they surface every ad-shaped signal the pipeline saw — including the ones the cutter's guards refused to act on — without ever modifying the file. They are UNVERIFIED guesses and false positives are expected by design: byte-shaped evidence about ads is unreliable (see docs/ALGORITHM.md), so render candidates as skippable chapter markers only and never auto-cut or auto-skip on them.</p></div></div>
   </div>
   <div class="tabbedcontent">
     <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="CONSTRUCTOR,TYPE,PROPERTY,FUNCTION">Members</button></div>
     <div class="tabs-section-body">
       <div data-togglable="CONSTRUCTOR">
         <h2 class="tableheader">Constructors</h2>
-        <div class="table"><a data-name="-713399435%2FConstructors%2F1558683979" anchor-label="AdBoundaryCandidate" id="-713399435%2FConstructors%2F1558683979" data-filterable-set=":/commonMain"></a>
+        <div class="table"><a data-name="1293037627%2FConstructors%2F1558683979" anchor-label="AdBoundaryCandidate" id="1293037627%2FConstructors%2F1558683979" data-filterable-set=":/commonMain"></a>
           <div class="table-row table-row_content" data-togglable="CONSTRUCTOR" data-filterable-current=":/commonMain" data-filterable-set=":/commonMain">
             <div class="main-subrow keyValue ">
               <div class=""><span class="inline-flex">
                   <div><a href="-ad-boundary-candidate.html"><span>Ad</span><wbr></wbr><span>Boundary</span><wbr></wbr><span><span>Candidate</span></span></a></div>
-<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-713399435%2FConstructors%2F1558683979"></span>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1293037627%2FConstructors%2F1558683979"></span>
                     <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
                   </span></span></div>
               <div>
                 <div class="title">
-                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":/commonMain"><div class="symbol monospace"><span class="token keyword">constructor</span><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">timeMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token punctuation">, </span></span><span class="parameter ">source<span class="token operator">: </span><a href="-source/index.html">AdBoundaryCandidate.Source</a><span class="token punctuation">, </span></span><span class="parameter ">role<span class="token operator">: </span><a href="-role/index.html">AdBoundaryCandidate.Role</a></span></span><span class="token punctuation">)</span></div></div></div>
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":/commonMain"><div class="symbol monospace"><span class="token keyword">constructor</span><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">timeMs<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token punctuation">, </span></span><span class="parameter ">source<span class="token operator">: </span><a href="-source/index.html">AdBoundaryCandidate.Source</a><span class="token punctuation">, </span></span><span class="parameter ">role<span class="token operator">: </span><a href="-role/index.html">AdBoundaryCandidate.Role</a><span class="token punctuation">, </span></span><span class="parameter ">confidence<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-float/index.html">Float</a></span></span><span class="token punctuation">)</span></div></div></div>
                 </div>
               </div>
             </div>
@@ -143,7 +143,7 @@
                   </span></span></div>
               <div>
                 <div class="title">
-                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":/commonMain"><div class="symbol monospace"><span class="token keyword">enum </span><a href="-role/index.html">Role</a> : <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span class="token operator">&lt;</span><a href="-role/index.html">AdBoundaryCandidate.Role</a><span class="token operator">&gt; </span></div><div class="brief "><p class="paragraph">How a candidate's <span data-unresolved-link="com.episode6.tacita/AdBoundaryCandidate//#kotlin.Long#com.episode6.tacita.AdBoundaryCandidate.Source#com.episode6.tacita.AdBoundaryCandidate.Role/PointingToCallableParameters(0)/">timeMs</span> relates to a possible ad.</p></div></div></div>
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":/commonMain"><div class="symbol monospace"><span class="token keyword">enum </span><a href="-role/index.html">Role</a> : <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span class="token operator">&lt;</span><a href="-role/index.html">AdBoundaryCandidate.Role</a><span class="token operator">&gt; </span></div><div class="brief "><p class="paragraph">How a candidate's <span data-unresolved-link="com.episode6.tacita/AdBoundaryCandidate//#kotlin.Long#com.episode6.tacita.AdBoundaryCandidate.Source#com.episode6.tacita.AdBoundaryCandidate.Role#kotlin.Float/PointingToCallableParameters(0)/">timeMs</span> relates to a possible ad.</p></div></div></div>
                 </div>
               </div>
             </div>
@@ -167,7 +167,22 @@
       </div>
       <div data-togglable="PROPERTY">
         <h2 class="tableheader">Properties</h2>
-        <div class="table"><a data-name="2144579301%2FProperties%2F1558683979" anchor-label="role" id="2144579301%2FProperties%2F1558683979" data-filterable-set=":/commonMain"></a>
+        <div class="table"><a data-name="987754705%2FProperties%2F1558683979" anchor-label="confidence" id="987754705%2FProperties%2F1558683979" data-filterable-set=":/commonMain"></a>
+          <div class="table-row table-row_content" data-filterable-current=":/commonMain" data-filterable-set=":/commonMain">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="confidence.html"><span><span>confidence</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="987754705%2FProperties%2F1558683979"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":/commonMain"><div class="symbol monospace"><span class="token keyword">val </span><a href="confidence.html">confidence</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-float/index.html">Float</a></div><div class="brief "><p class="paragraph">How strongly the evidence suggests a real ad boundary, in <code class="lang-kotlin">0.0..1.0</code>. Values are <strong>uncalibrated heuristic priors</strong> (see docs/ALGORITHM.md): the <i>ordering</i> is meaningful — an applied diff cut outranks a leaked DAI slot outranks a chapter edge, and candidates corroborated by a second signal within 250ms rank above uncorroborated ones — but the absolute numbers carry no probability semantics and no ear-verified calibration. Useful for sorting or thresholding a skip list; never a license to auto-cut or auto-skip, at any value.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="2144579301%2FProperties%2F1558683979" anchor-label="role" id="2144579301%2FProperties%2F1558683979" data-filterable-set=":/commonMain"></a>
           <div class="table-row table-row_content" data-filterable-current=":/commonMain" data-filterable-set=":/commonMain">
             <div class="main-subrow keyValue ">
               <div class=""><span class="inline-flex">

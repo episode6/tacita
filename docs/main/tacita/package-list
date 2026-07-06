@@ -17,7 +17,8 @@ $dokka.location:com.episode6.tacita/AdBoundaryCandidate.Source/entries/#/Pointin
 $dokka.location:com.episode6.tacita/AdBoundaryCandidate.Source/valueOf/#kotlin.String/PointingToDeclaration/tacita/com.episode6.tacita/-ad-boundary-candidate/-source/value-of.html
 $dokka.location:com.episode6.tacita/AdBoundaryCandidate.Source/values/#/PointingToDeclaration/tacita/com.episode6.tacita/-ad-boundary-candidate/-source/values.html
 $dokka.location:com.episode6.tacita/AdBoundaryCandidate///PointingToDeclaration/tacita/com.episode6.tacita/-ad-boundary-candidate/index.html
-$dokka.location:com.episode6.tacita/AdBoundaryCandidate/AdBoundaryCandidate/#kotlin.Long#com.episode6.tacita.AdBoundaryCandidate.Source#com.episode6.tacita.AdBoundaryCandidate.Role/PointingToDeclaration/tacita/com.episode6.tacita/-ad-boundary-candidate/-ad-boundary-candidate.html
+$dokka.location:com.episode6.tacita/AdBoundaryCandidate/AdBoundaryCandidate/#kotlin.Long#com.episode6.tacita.AdBoundaryCandidate.Source#com.episode6.tacita.AdBoundaryCandidate.Role#kotlin.Float/PointingToDeclaration/tacita/com.episode6.tacita/-ad-boundary-candidate/-ad-boundary-candidate.html
+$dokka.location:com.episode6.tacita/AdBoundaryCandidate/confidence/#/PointingToDeclaration/tacita/com.episode6.tacita/-ad-boundary-candidate/confidence.html
 $dokka.location:com.episode6.tacita/AdBoundaryCandidate/role/#/PointingToDeclaration/tacita/com.episode6.tacita/-ad-boundary-candidate/role.html
 $dokka.location:com.episode6.tacita/AdBoundaryCandidate/source/#/PointingToDeclaration/tacita/com.episode6.tacita/-ad-boundary-candidate/source.html
 $dokka.location:com.episode6.tacita/AdBoundaryCandidate/timeMs/#/PointingToDeclaration/tacita/com.episode6.tacita/-ad-boundary-candidate/time-ms.html
