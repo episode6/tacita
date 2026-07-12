@@ -1,6 +1,6 @@
 # ChangeLog
 
-### v0.0.3-SNAPSHOT - Unreleased
+### v0.0.3 - Released 7/12/2026
 
 - **Confidence scores on ad-boundary candidates** (API break): `AdBoundaryCandidate` gains
   a required `confidence: Float` in `0.0..1.0` — an uncalibrated heuristic ranking of how
