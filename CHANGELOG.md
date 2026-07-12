@@ -1,7 +1,5 @@
 # ChangeLog
 
-### v0.0.4-SNAPSHOT - Unreleased
-
 ### v0.0.3 - Released 7/12/2026
 
 - **Confidence scores on ad-boundary candidates** (API break): `AdBoundaryCandidate` gains
