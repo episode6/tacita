@@ -581,9 +581,16 @@ requirement above and the ear-check rule:
 attribution, the creative still *log-matches* in that feed's future episodes off other
 feeds' attributions — harmless while log-only, but before candidates ship this needs a
 design: per-feed negative evidence ("feed X verified this clean") that suppresses that
-feed's candidates without touching other feeds, rather than mere attribution absence.
-Also still open: real-feed ear verification (blocks any confidence prior) and the
-threshold validation + cost measurement from the previous section.
+feed's candidates without touching other feeds, rather than mere attribution absence
+(absence must keep matching — it's indistinguishable from "feed never encountered it",
+the cross-feed payoff case). One semantic already decided (ghackett, 2026-07-19): **a
+later human confirmation in that feed overrides the tombstone** — consistent with the
+evidence hierarchy everywhere else in the library (a human ear deliberately confirming
+the creative as an ad, after the clean-serving observation, outranks the machine
+signal; acoustic matching also carries false-positive risk byte matching doesn't, so
+the tombstone itself may be wrong). Also still open: real-feed ear verification (blocks
+any confidence prior) and the threshold validation + cost measurement from the previous
+section.
 
 ## The aggressive candidate pass (2026-07-05, additive)
 
