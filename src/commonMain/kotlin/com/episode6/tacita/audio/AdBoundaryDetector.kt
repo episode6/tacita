@@ -3,6 +3,7 @@ package com.episode6.tacita.audio
 import com.episode6.tacita.AdBoundaryCandidate
 import com.episode6.tacita.AdBoundaryCandidate.Role
 import com.episode6.tacita.AdBoundaryCandidate.Source
+import com.episode6.tacita.AdFingerprintInfo
 import com.episode6.tacita.systemFileSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -30,6 +31,8 @@ internal class AdBoundaryDetector(
   private val fileSystem: FileSystem = systemFileSystem,
   private val mp3SegmentParser: Mp3SegmentParser = Mp3SegmentParser(),
   private val id3FrameReader: Id3FrameReader = Id3FrameReader(),
+  private val adFingerprinter: AdFingerprinter = AdFingerprinter(),
+  private val fingerprintStoreFile: AdFingerprintStoreFile = AdFingerprintStoreFile(fileSystem),
   private val log: (String) -> Unit = {},
 ) {
 
@@ -39,17 +42,53 @@ internal class AdBoundaryDetector(
     cutResult: AdCutter.Result?,
     /** From [com.episode6.tacita.http.CleanSourceResolver.Resolution]; original-timeline ms. */
     daiSlotsMs: List<Long>,
+    /** null when the caller keeps no fingerprint store. */
+    fingerprintStore: Path? = null,
   ): List<AdBoundaryCandidate> = withContext(Dispatchers.IO) {
     val raw = mutableListOf<AdBoundaryCandidate>()
     guarded(file, "opening file") { fileSystem.openReadOnly(file) }?.use { handle ->
       raw += guarded(file, "segment scan") { segmentJoins(handle) }.orEmpty()
       raw += guarded(file, "id3 chapters") { chapterEdges(id3TagPrefix(handle)) }.orEmpty()
+      if (fingerprintStore != null) {
+        raw += guarded(file, "fingerprint match") { fingerprintCandidates(handle, fingerprintStore) }.orEmpty()
+      }
     }
     raw += guarded(file, "diff mapping") { diffCandidates(cutResult) }.orEmpty()
     raw += daiSlotsMs.map {
       AdBoundaryCandidate(timeMs = it, source = Source.DAI_SLOT, role = Role.JOIN, confidence = CONFIDENCE_DAI_SLOT)
     }
     finish(file, raw)
+  }
+
+  /**
+   * Recurrences of stored (diff-proven or human-confirmed) creatives still present in the
+   * output file — the ads that survived every earlier stage (sticky fill that blinded the
+   * diff, or a file downloaded with no usable reference). Byte-exact matches of
+   * known-creative fingerprints are the strongest candidate signal we have, but per the
+   * ship-log-only rule (docs/ALGORITHM.md 2026-07-19) they surface as candidates, never
+   * cuts.
+   */
+  private fun fingerprintCandidates(handle: FileHandle, fingerprintStore: Path): List<AdBoundaryCandidate> {
+    val stored = fingerprintStoreFile.read(fingerprintStore)
+    if (stored.isEmpty()) return emptyList()
+    val matches = adFingerprinter.match(handle, stored)
+    if (matches.isEmpty()) return emptyList()
+    val edges = matches.flatMap { listOf(it.fromByte, it.toByte) }
+    val seconds = mp3SegmentParser.secondsAtBytes(handle, edges)
+    return matches.flatMapIndexed { i, match ->
+      val confidence = when (match.fingerprint.provenance) {
+        AdFingerprintInfo.Provenance.HUMAN_CONFIRMED -> CONFIDENCE_FINGERPRINT_CONFIRMED
+        AdFingerprintInfo.Provenance.DIFF_PROVEN -> CONFIDENCE_FINGERPRINT_DIFF_PROVEN
+      }
+      log(
+        "AdBoundaryDetector: fingerprint ${match.fingerprint.id.take(12)} (${match.fingerprint.provenance}) matched " +
+          "${match.matchedSeconds.toInt()}s at bytes ${match.fromByte}..${match.toByte}",
+      )
+      listOf(
+        AdBoundaryCandidate(timeMs = (seconds[i * 2] * 1000).toLong(), source = Source.FINGERPRINT, role = Role.START, confidence = confidence),
+        AdBoundaryCandidate(timeMs = (seconds[i * 2 + 1] * 1000).toLong(), source = Source.FINGERPRINT, role = Role.END, confidence = confidence),
+      )
+    }
   }
 
   /** Joins between independently-encoded segments; the first segment's start is not a join. */
@@ -184,7 +223,12 @@ internal class AdBoundaryDetector(
     // cutter declined to act on; a DAI slot is the host's own ad-server placement; a
     // stitch join marks *an* encode boundary (ads and content assembly alike — dead end
     // 1); a chapter edge is usually a content chapter that only sometimes labels an ad.
+    // a byte-exact recurrence of a creative a human ear-verified as an ad outranks every
+    // machine signal; a diff-proven creative's recurrence slots between the applied cut
+    // and the DAI slot (real proof, but from another episode's serving)
+    const val CONFIDENCE_FINGERPRINT_CONFIRMED = 0.95f
     const val CONFIDENCE_DIFF_APPLIED = 0.9f
+    const val CONFIDENCE_FINGERPRINT_DIFF_PROVEN = 0.85f
     const val CONFIDENCE_DAI_SLOT = 0.8f
     const val CONFIDENCE_DIFF_SKIPPED = 0.65f
     const val CONFIDENCE_SEGMENT_BOUNDARY = 0.4f

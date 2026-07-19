@@ -74,6 +74,90 @@ internal class Mp3SegmentParser {
   /** Byte offset of the first mp3 frame (skipping any ID3v2 header). */
   internal fun audioStart(data: ByteArray): Int = ArrayBytes(data).let { findNextFrame(it, id3v2Size(it)) ?: it.size }
 
+  /**
+   * Playback seconds at each byte [offsets] entry (the time of the frame containing the
+   * offset; before the first frame → 0, past the last → total duration). Streams through
+   * a fixed window like [scan], so whole files never load into memory.
+   */
+  fun secondsAtBytes(handle: FileHandle, offsets: List<Int>, windowBytes: Int = DEFAULT_WINDOW_BYTES): List<Double> {
+    val data = WindowedFileBytes(handle, windowBytes)
+    val out = DoubleArray(offsets.size)
+    val sorted = offsets.withIndex().sortedBy { it.value }
+    var idx = 0
+    var seconds = 0.0
+    val start = findNextFrame(data, id3v2Size(data))
+    if (start != null) {
+      var pos = start
+      while (pos + FRAME_HEADER_SIZE <= data.size && idx < sorted.size) {
+        val frame = parseFrameHeader(data, pos)
+        if (frame == null) {
+          pos++
+          continue
+        }
+        if (pos + frame.lengthBytes > data.size) break
+        while (idx < sorted.size && sorted[idx].value < pos + frame.lengthBytes) {
+          out[sorted[idx].index] = seconds
+          idx++
+        }
+        seconds += frame.durationSeconds
+        pos += frame.lengthBytes
+      }
+    }
+    while (idx < sorted.size) {
+      out[sorted[idx].index] = seconds
+      idx++
+    }
+    return out.toList()
+  }
+
+  /** A frame-snapped byte range for a requested ms range, with the snapped times. */
+  data class SnappedByteRange(
+    val fromByte: Int,
+    val toByte: Int, // exclusive
+    val fromSeconds: Double,
+    val toSeconds: Double,
+  )
+
+  /**
+   * Maps `[fromMs, toMs]` in the file's playback timeline to the byte range of the frames
+   * covering it — the start of the frame containing [fromMs] through the end of the frame
+   * containing [toMs] (clamped to the last frame). Returns null when [fromMs] lies at or
+   * past the end of the audio. Streams like [scan].
+   */
+  fun byteRangeForMs(handle: FileHandle, fromMs: Long, toMs: Long, windowBytes: Int = DEFAULT_WINDOW_BYTES): SnappedByteRange? {
+    require(toMs > fromMs) { "toMs ($toMs) must be greater than fromMs ($fromMs)" }
+    val data = WindowedFileBytes(handle, windowBytes)
+    val start = findNextFrame(data, id3v2Size(data)) ?: return null
+    val fromSec = fromMs / 1000.0
+    val toSec = toMs / 1000.0
+    var seconds = 0.0
+    var pos = start
+    var fromByte = -1
+    var fromSeconds = 0.0
+    var lastFrameEnd = -1
+    while (pos + FRAME_HEADER_SIZE <= data.size) {
+      val frame = parseFrameHeader(data, pos)
+      if (frame == null) {
+        pos++
+        continue
+      }
+      if (pos + frame.lengthBytes > data.size) break
+      val frameEndSeconds = seconds + frame.durationSeconds
+      if (fromByte < 0 && fromSec < frameEndSeconds) {
+        fromByte = pos
+        fromSeconds = seconds
+      }
+      if (fromByte >= 0 && toSec <= frameEndSeconds) {
+        return SnappedByteRange(fromByte = fromByte, toByte = pos + frame.lengthBytes, fromSeconds = fromSeconds, toSeconds = frameEndSeconds)
+      }
+      seconds = frameEndSeconds
+      lastFrameEnd = pos + frame.lengthBytes
+      pos += frame.lengthBytes
+    }
+    if (fromByte < 0 || lastFrameEnd < 0) return null
+    return SnappedByteRange(fromByte = fromByte, toByte = lastFrameEnd, fromSeconds = fromSeconds, toSeconds = seconds)
+  }
+
   /** Walks the frames tiling [from, until); [from] must be at (or before) a real frame start. */
   internal fun frames(data: ByteArray, from: Int, until: Int): List<Frame> = frames(ArrayBytes(data), from, until)
 

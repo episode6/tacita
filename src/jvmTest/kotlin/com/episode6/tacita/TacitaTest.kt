@@ -292,6 +292,114 @@ class TacitaTest {
     assertThat(outputFile.readBytes(), name = "truncated copy must never be served").isEqualTo(contentA + contentB)
   }
 
+  @Test fun `seeds diff-proven fingerprints from applied cuts and flags their recurrence in later downloads`() = runBlocking<Unit> {
+    val fpStore = dir.resolve("ads.tacita-fp").toOkioPath()
+    val longContent = contentA + contentB + contentA + contentB // ~28.4s, keeps the ~7.3s break under the 25% cut guard
+    val adBreak = adA + adB + adA // ~7.3s: above the 5s fingerprint floor
+    val logLines = mutableListOf<String>()
+
+    // episode 1: the diff proves the tail break was injected and cuts it -> store seeded
+    val engine1 = engine(listOf(longContent + adBreak, longContent))
+    val tacita1 = Tacita.withClient(log = { logLines += it }) { HttpClient(engine1) }
+    tacita1.downloadPodcast(
+      URL, outputFile.toOkioPath(), referenceFile.toOkioPath(),
+      overwrite = false, cutAds = true, fingerprintStore = fpStore,
+    ).toList()
+
+    assertThat(outputFile.readBytes()).isEqualTo(longContent)
+    assertThat(logLines.filter { "seeded 1 diff-proven" in it }).hasSize(1)
+    val stored = tacita1.fingerprints(fpStore)
+    assertThat(stored).hasSize(1)
+    assertThat(stored.single().provenance).isEqualTo(AdFingerprintInfo.Provenance.DIFF_PROVEN)
+
+    // episode 2: sticky fill -> identical copies -> the diff is blind, but the store is not
+    requestCount = 0
+    val episode2 = contentB + adBreak + contentA
+    val output2 = dir.resolve("two.mp3")
+    val engine2 = engine(listOf(episode2, episode2))
+    val tacita2 = Tacita.withClient { HttpClient(engine2) }
+    val states = tacita2.downloadPodcast(
+      URL, output2.toOkioPath(), dir.resolve("two.mp3.adref").toOkioPath(),
+      overwrite = false, cutAds = true, fingerprintStore = fpStore,
+    ).toList()
+
+    assertThat(output2.readBytes(), name = "fingerprint matches must never cut the file").isEqualTo(episode2)
+    val fpCandidates = (states.last() as DownloadState.Complete).adBoundaryCandidates
+      .filter { it.source == AdBoundaryCandidate.Source.FINGERPRINT }
+    assertThat(fpCandidates.map { it.role }).containsExactly(AdBoundaryCandidate.Role.START, AdBoundaryCandidate.Role.END)
+    assertThat(fpCandidates[0].timeMs, name = "break starts after content-b (~8.1s)").isBetween(7_600L, 8_600L)
+    assertThat(fpCandidates[1].timeMs, name = "matched blocks span ~6s").isBetween(13_100L, 15_000L)
+    fpCandidates.forEach { assertThat(it.confidence).isBetween(0.84f, 1f) }
+  }
+
+  @Test fun `confirmAd stores a human-confirmed fingerprint that flags later recurrences`() = runBlocking<Unit> {
+    val fpStore = dir.resolve("ads.tacita-fp").toOkioPath()
+    val bigBreak = adA + adB + adA + adB // ~10.4s: big enough to survive sloppy edge selection
+    outputFile.writeBytes(contentA + bigBreak + contentB)
+    val tacita = Tacita.withClient { HttpClient(engine(emptyList())) }
+
+    // the listener heard the break at ~6.1s..16.5s and confirmed it imprecisely
+    val info = tacita.confirmAd(outputFile.toOkioPath(), fpStore, startMs = 6_400, endMs = 16_200)
+
+    assertThat(info.provenance).isEqualTo(AdFingerprintInfo.Provenance.HUMAN_CONFIRMED)
+    assertThat(tacita.fingerprints(fpStore)).containsExactly(info)
+
+    // a later episode carries the same creative at a different position
+    val episode2 = contentB + bigBreak + contentA
+    val output2 = dir.resolve("two.mp3")
+    val engine2 = engine(listOf(episode2, episode2))
+    val tacita2 = Tacita.withClient { HttpClient(engine2) }
+    val states = tacita2.downloadPodcast(
+      URL, output2.toOkioPath(), dir.resolve("two.mp3.adref").toOkioPath(),
+      overwrite = false, cutAds = true, fingerprintStore = fpStore,
+    ).toList()
+
+    val fpCandidates = (states.last() as DownloadState.Complete).adBoundaryCandidates
+      .filter { it.source == AdBoundaryCandidate.Source.FINGERPRINT }
+    assertThat(fpCandidates.map { it.role }).containsExactly(AdBoundaryCandidate.Role.START, AdBoundaryCandidate.Role.END)
+    assertThat(fpCandidates[0].timeMs, name = "break starts after content-b (~8.1s)").isBetween(7_600L, 9_200L)
+    fpCandidates.forEach { assertThat(it.confidence, name = "human-confirmed outranks diff-proven").isBetween(0.94f, 1f) }
+
+    // and the listener can revoke it
+    assertThat(tacita.removeFingerprint(fpStore, info.id)).isTrue()
+    assertThat(tacita.fingerprints(fpStore)).isEmpty()
+    assertThat(tacita.removeFingerprint(fpStore, info.id), name = "second removal finds nothing").isFalse()
+  }
+
+  @Test fun `confirmAd rejects ranges too short to fingerprint`() = runBlocking<Unit> {
+    outputFile.writeBytes(contentA + contentB)
+    val tacita = Tacita.withClient { HttpClient(engine(emptyList())) }
+
+    assertFailure {
+      tacita.confirmAd(outputFile.toOkioPath(), dir.resolve("ads.tacita-fp").toOkioPath(), startMs = 1_000, endMs = 3_000)
+    }.isInstanceOf(IllegalArgumentException::class)
+  }
+
+  @Test fun `prunes fingerprints that match a verified-clean serving`() = runBlocking<Unit> {
+    val fpStore = dir.resolve("ads.tacita-fp").toOkioPath()
+    val clean = contentA + contentB + contentA
+    outputFile.writeBytes(clean)
+    val logLines = mutableListOf<String>()
+    val engine = engine(listOf(clean, clean)) // one probe, one download
+    val tacita = Tacita.withClient(log = { logLines += it }) { HttpClient(engine) }
+
+    // a mis-confirmed "ad" that is actually show content (~contentB, 6.1s..14.2s)
+    tacita.confirmAd(outputFile.toOkioPath(), fpStore, startMs = 6_500, endMs = 13_500)
+    assertThat(tacita.fingerprints(fpStore)).hasSize(1)
+
+    val output2 = dir.resolve("clean.mp3")
+    val states = tacita.downloadPodcast(
+      URL, output2.toOkioPath(), dir.resolve("clean.mp3.adref").toOkioPath(),
+      overwrite = false, cutAds = true,
+      declaredEnclosureBytes = clean.size.toLong(), fingerprintStore = fpStore,
+    ).toList()
+
+    assertThat(tacita.fingerprints(fpStore), name = "content fingerprints must not survive a clean serving").isEmpty()
+    assertThat(logLines.filter { "pruned 1 fingerprint" in it }).hasSize(1)
+    val candidates = (states.last() as DownloadState.Complete).adBoundaryCandidates
+    assertThat(candidates.filter { it.source == AdBoundaryCandidate.Source.FINGERPRINT }, name = "pruned fingerprints emit no candidates").isEmpty()
+  }
+
   @Test fun `fails when the output file exists and overwrite is false`() {
     outputFile.writeBytes(contentA)
 

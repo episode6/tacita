@@ -2,16 +2,23 @@ package com.episode6.tacita
 
 import com.episode6.tacita.audio.AdBoundaryDetector
 import com.episode6.tacita.audio.AdCutter
+import com.episode6.tacita.audio.AdFingerprintStoreFile
+import com.episode6.tacita.audio.AdFingerprinter
 import com.episode6.tacita.audio.Id3ChapterShifter
 import com.episode6.tacita.audio.Mp3SegmentParser
+import com.episode6.tacita.audio.StoredAdFingerprint
 import com.episode6.tacita.http.CleanSourceResolver
 import com.episode6.tacita.http.Downloader
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.IOException
 import okio.Path
+import okio.use
 
 /** Thrown by [Tacita.downloadPodcast] when the output file exists and `overwrite` is false. */
 public class FileAlreadyExistsException(path: Path) : IOException("file already exists: $path")
@@ -88,6 +95,15 @@ public data class AdBoundaryCandidate(
 
     /** An ID3v2 CHAP frame edge written by the host (Audioboom labels ad slots this way). */
     ID3_CHAPTER,
+
+    /**
+     * A byte-exact recurrence of a creative from the caller's fingerprint store — an ad
+     * that was previously diff-proven or human-confirmed (see [Tacita.confirmAd]) and is
+     * still present in this output file (e.g. sticky fill that blinded the diff).
+     * Emitted as START/END pairs spanning the matched creative. The strongest candidate
+     * signal there is, but still a candidate: matches never cut (see docs/ALGORITHM.md).
+     */
+    FINGERPRINT,
   }
 
   /** How a candidate's [timeMs] relates to a possible ad. */
@@ -100,6 +116,37 @@ public data class AdBoundaryCandidate(
 
     /** Material was (or may have been) joined here; either side could be an ad. */
     JOIN,
+  }
+}
+
+/**
+ * A creative in a fingerprint store (see [Tacita.downloadPodcast]'s `fingerprintStore`
+ * param and [Tacita.confirmAd]).
+ */
+public data class AdFingerprintInfo(
+  /** Content-derived identity: the same creative bytes always produce the same id. */
+  public val id: String,
+  public val provenance: Provenance,
+  /** Playback duration of the fingerprinted range. */
+  public val durationMs: Long,
+  /** Encoded size of the fingerprinted range. */
+  public val sizeBytes: Long,
+) {
+
+  /** How a fingerprint earned its place in the store. */
+  public enum class Provenance {
+    /**
+     * Auto-seeded from an applied diff cut: the two-copy diff proved these bytes were
+     * injected into one serving and the cutter removed them.
+     */
+    DIFF_PROVEN,
+
+    /**
+     * A human listened to the range and confirmed it is an ad (via [Tacita.confirmAd]) —
+     * the strongest evidence this library recognizes. Never downgraded by a later
+     * DIFF_PROVEN sighting of the same creative.
+     */
+    HUMAN_CONFIRMED,
   }
 }
 
@@ -141,6 +188,17 @@ public interface Tacita {
    * output file, gathered by a read-only pass that never modifies the file (and never fails
    * the download). See [AdBoundaryCandidate] for the consumer contract.
    *
+   * When [fingerprintStore] is provided (and [cutAds] is true), tacita additionally maintains
+   * a store of known ad-creative fingerprints at that path (creating it on first use):
+   * every applied diff cut auto-seeds a [AdFingerprintInfo.Provenance.DIFF_PROVEN]
+   * fingerprint of the removed bytes, recurrences of stored creatives still present in the
+   * output file surface as [AdBoundaryCandidate.Source.FINGERPRINT] candidates (matches
+   * never cut the file), and fingerprints that match a verified-clean serving are pruned —
+   * a stored "creative" that appears in the publisher's own upload is show content, not an
+   * ad. Keep one store per feed: creatives are targeted per show, and per-show scoping
+   * avoids false positives from assets shared across a network's shows. Store failures are
+   * logged and never fail the download.
+   *
    * The flow throws [FileAlreadyExistsException] if [outputFile] exists and [overwrite] is false.
    */
   public fun downloadPodcast(
@@ -151,7 +209,44 @@ public interface Tacita {
     cutAds: Boolean,
     declaredEnclosureBytes: Long? = null,
     expectedDurationSeconds: Long? = null,
+    fingerprintStore: Path? = null,
   ): Flow<DownloadState>
+
+  /**
+   * Records a human-confirmed ad: fingerprints the creative spanning `[startMs, endMs]` of
+   * [file]'s playback timeline (a file previously produced by [downloadPodcast]) and adds
+   * it to [fingerprintStore] with [AdFingerprintInfo.Provenance.HUMAN_CONFIRMED], creating
+   * the store on first use. Future [downloadPodcast] calls passing the same store surface
+   * recurrences of the creative as [AdBoundaryCandidate.Source.FINGERPRINT] candidates.
+   *
+   * The range should be the listener's best estimate of the ad's extent. Edges are snapped
+   * to mp3 frame boundaries and imprecision is tolerated: bytes unique to this episode that
+   * leak into the range simply never match again, while the creative's interior still
+   * matches in future episodes. Matching is byte-exact, so a confirmation only helps for as
+   * long as the host serves the same encoding of the creative (see docs/ALGORITHM.md).
+   *
+   * Returns the stored fingerprint's info. If the same creative was already stored, its
+   * provenance is upgraded to HUMAN_CONFIRMED.
+   *
+   * @throws IllegalArgumentException when the range is invalid, shorter than ~5 seconds,
+   *   longer than ~10 minutes, or outside the file's audio
+   * @throws okio.IOException when [file] can't be read or the store can't be written
+   */
+  public suspend fun confirmAd(
+    file: Path,
+    fingerprintStore: Path,
+    startMs: Long,
+    endMs: Long,
+  ): AdFingerprintInfo
+
+  /** The fingerprints currently in [fingerprintStore] (empty when the store doesn't exist). */
+  public suspend fun fingerprints(fingerprintStore: Path): List<AdFingerprintInfo>
+
+  /**
+   * Revokes a fingerprint (e.g. one the listener decides was confirmed in error) by its
+   * [AdFingerprintInfo.id]. Returns false when no such fingerprint exists in the store.
+   */
+  public suspend fun removeFingerprint(fingerprintStore: Path, id: String): Boolean
 
   public companion object : Tacita by TacitaImpl() {
     /**
@@ -189,20 +284,25 @@ private class TacitaImpl(
   private val reuseClient: Boolean = false,
   private val fileSystem: FileSystem = systemFileSystem,
   private val log: (String) -> Unit = {},
-  mp3SegmentParser: Mp3SegmentParser = Mp3SegmentParser(),
+  private val mp3SegmentParser: Mp3SegmentParser = Mp3SegmentParser(),
   id3ChapterShifter: Id3ChapterShifter = Id3ChapterShifter(),
 ) : Tacita {
 
   private val reusedClient: HttpClient by lazy(httpClientFactory)
+  private val adFingerprinter = AdFingerprinter()
+  private val fingerprintStoreFile = AdFingerprintStoreFile(fileSystem)
   private val adCutter = AdCutter(
     fileSystem = fileSystem,
     log = log,
     mp3SegmentParser = mp3SegmentParser,
     id3ChapterShifter = id3ChapterShifter,
+    adFingerprinter = adFingerprinter,
   )
   private val adBoundaryDetector = AdBoundaryDetector(
     fileSystem = fileSystem,
     mp3SegmentParser = mp3SegmentParser,
+    adFingerprinter = adFingerprinter,
+    fingerprintStoreFile = fingerprintStoreFile,
     log = log,
   )
 
@@ -214,6 +314,7 @@ private class TacitaImpl(
     cutAds: Boolean,
     declaredEnclosureBytes: Long?,
     expectedDurationSeconds: Long?,
+    fingerprintStore: Path?,
   ): Flow<DownloadState> = flow {
     val httpClient = if (reuseClient) reusedClient else httpClientFactory()
     try {
@@ -231,7 +332,14 @@ private class TacitaImpl(
           val size = fileSystem.metadata(outputFile).size
           if (size == clean.contentLength) {
             log("Tacita: ${outputFile.name}: clean serving downloaded directly ($size bytes), no ad-cut needed")
-            emit(DownloadState.Complete(adBoundaryDetector.detect(outputFile, cutResult = null, daiSlotsMs = daiSlotsMs)))
+            // a stored "creative" that appears in the publisher's own upload is show
+            // content a human mis-confirmed (or a hash accident) — never keep it
+            if (fingerprintStore != null) pruneFingerprintsMatchingCleanServing(outputFile, fingerprintStore)
+            emit(
+              DownloadState.Complete(
+                adBoundaryDetector.detect(outputFile, cutResult = null, daiSlotsMs = daiSlotsMs, fingerprintStore = fingerprintStore),
+              ),
+            )
             return@flow
           }
           // a short read looks like a completed download; never serve a copy we can't
@@ -256,12 +364,86 @@ private class TacitaImpl(
             .collect { emit(DownloadState.Downloading(referenceFile, it)) }
         }
         emit(DownloadState.CuttingAds)
-        val cutResult = adCutter.cutAds(file = outputFile, referenceFile = referenceFile)
-        adBoundaryCandidates = adBoundaryDetector.detect(outputFile, cutResult = cutResult, daiSlotsMs = daiSlotsMs)
+        val cutResult = adCutter.cutAds(file = outputFile, referenceFile = referenceFile, seedFingerprints = fingerprintStore != null)
+        if (fingerprintStore != null && cutResult is AdCutter.Result.AdsCut) {
+          seedFingerprints(outputFile, fingerprintStore, cutResult.fingerprints)
+        }
+        adBoundaryCandidates = adBoundaryDetector.detect(outputFile, cutResult = cutResult, daiSlotsMs = daiSlotsMs, fingerprintStore = fingerprintStore)
       }
       emit(DownloadState.Complete(adBoundaryCandidates))
     } finally {
       if (!reuseClient) httpClient.close()
+    }
+  }
+
+  override suspend fun confirmAd(
+    file: Path,
+    fingerprintStore: Path,
+    startMs: Long,
+    endMs: Long,
+  ): AdFingerprintInfo = withContext(Dispatchers.IO) {
+    require(startMs >= 0) { "startMs must not be negative, was $startMs" }
+    require(endMs > startMs) { "endMs ($endMs) must be greater than startMs ($startMs)" }
+    val fingerprint = fileSystem.openReadOnly(file).use { handle ->
+      val snapped = mp3SegmentParser.byteRangeForMs(handle, startMs, endMs)
+        ?: throw IllegalArgumentException("range ${startMs}ms..${endMs}ms is outside the audio of $file")
+      val durationSeconds = snapped.toSeconds - snapped.fromSeconds
+      require(durationSeconds >= AdFingerprinter.MIN_FINGERPRINT_SECONDS) {
+        "range is too short to fingerprint (${durationSeconds}s < ${AdFingerprinter.MIN_FINGERPRINT_SECONDS}s)"
+      }
+      require(durationSeconds <= AdFingerprinter.MAX_FINGERPRINT_SECONDS) {
+        "range is too long to fingerprint (${durationSeconds}s > ${AdFingerprinter.MAX_FINGERPRINT_SECONDS}s)"
+      }
+      val bytes = ByteArray(snapped.toByte - snapped.fromByte)
+      var filled = 0
+      while (filled < bytes.size) {
+        val read = handle.read((snapped.fromByte + filled).toLong(), bytes, filled, bytes.size - filled)
+        if (read <= 0) throw IOException("unexpected end of file reading $file at byte ${snapped.fromByte + filled}")
+        filled += read
+      }
+      adFingerprinter.extract(
+        data = bytes,
+        fromByte = 0,
+        toByte = bytes.size,
+        durationSeconds = durationSeconds,
+        provenance = AdFingerprintInfo.Provenance.HUMAN_CONFIRMED,
+      ) ?: throw IllegalArgumentException("range ${startMs}ms..${endMs}ms is too small to fingerprint")
+    }
+    fingerprintStoreFile.add(fingerprintStore, listOf(fingerprint))
+    log("Tacita: ${file.name}: human-confirmed ad fingerprint ${fingerprint.id.take(12)} (${fingerprint.durationMs / 1000}s)")
+    fingerprint.info
+  }
+
+  override suspend fun fingerprints(fingerprintStore: Path): List<AdFingerprintInfo> = withContext(Dispatchers.IO) {
+    fingerprintStoreFile.read(fingerprintStore).map { it.info }
+  }
+
+  override suspend fun removeFingerprint(fingerprintStore: Path, id: String): Boolean = withContext(Dispatchers.IO) {
+    fingerprintStoreFile.remove(fingerprintStore, id)
+  }
+
+  // store maintenance never fails a download: it's an accuracy improvement, not a dependency
+  private fun seedFingerprints(outputFile: Path, store: Path, fingerprints: List<StoredAdFingerprint>) {
+    if (fingerprints.isEmpty()) return
+    try {
+      val added = fingerprintStoreFile.add(store, fingerprints)
+      if (added > 0) log("Tacita: ${outputFile.name}: seeded $added diff-proven ad fingerprint(s)")
+    } catch (t: Throwable) {
+      log("Tacita: ${outputFile.name}: fingerprint seeding failed: ${t.message}")
+    }
+  }
+
+  private fun pruneFingerprintsMatchingCleanServing(file: Path, store: Path) {
+    try {
+      val stored = fingerprintStoreFile.read(store)
+      if (stored.isEmpty()) return
+      val matches = fileSystem.openReadOnly(file).use { adFingerprinter.match(it, stored) }
+      if (matches.isEmpty()) return
+      val ids = matches.map { it.fingerprint.id }.toSet()
+      fingerprintStoreFile.write(store, stored.filterNot { it.id in ids })
+      log("Tacita: ${file.name}: pruned ${ids.size} fingerprint(s) that matched the verified-clean serving (content, not ads)")
+    } catch (t: Throwable) {
+      log("Tacita: ${file.name}: clean-serving fingerprint prune failed: ${t.message}")
     }
   }
 }
