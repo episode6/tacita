@@ -457,6 +457,35 @@ unexamined dogma:
   fingerprint only for the feed that observed it — or downgrades it — never deletes
   another feed's confirmation outright).
 
+### Acoustic-layer groundwork: common-code mp3 decoder (2026-07-19, additive)
+
+The acoustic layer's known large lift — a PCM decoder that runs on every KMP target — is
+done: `Mp3Decoder` (internal) is a hand-port of minimp3 (CC0) to common Kotlin, in the exact
+configuration ported from (scalar path, float output, Layer III only; MPEG-1/2/2.5, mono
+through joint stereo, bit reservoir, free format). The constant tables were extracted
+mechanically from `minimp3.h` by `scripts/port-minimp3-tables.py` — ~3,000 values with zero
+hand transcription.
+
+**Verification (2026-07-19):** the port was compared against the C minimp3 compiled locally
+(gcc 15.2, same `MINIMP3_ONLY_MP3`/`MINIMP3_FLOAT_OUTPUT`/`MINIMP3_NO_SIMD` configuration)
+on three streams — the two committed MPEG-2 22.05kHz mono fixtures and a new MPEG-1
+44.1kHz joint-stereo 128kbps fixture (`stereo.mp3`, generated with jump3r/LAME 3.98 from
+transient-heavy synthetic PCM to force the short-block and mid/side paths). All 763,200
+decoded samples were **bit-identical** across all three streams. `Mp3DecoderTest` pins that
+result with SHA-256 digests of the decoded PCM (the decode path is pure IEEE-754 single
+arithmetic, no libm, so the bits are platform-deterministic) and cross-checks stream
+structure against JLayer as an independent implementation. Measured in passing: JLayer's
+own output differs from minimp3 by ~6 LSB rms (its known limited accuracy) and clamps at
+16-bit full scale where the float path legitimately peaks above 1.0 — neither affects us,
+but don't be surprised by it if using JLayer as an oracle later.
+
+Decoder behavior notes for the future fingerprinter: output is interleaved `[-1, 1]` floats
+(unclamped); a corrupt/garbage buffer never throws — the huffman fast path reads zeros where
+C would over-read stack garbage (deliberate divergence, same "no crash, nonsense output"
+contract); frames are skipped (0 samples, `frameBytes > 0`) until the bit reservoir primes,
+matching minimp3. Still open before the layer itself: FFT + spectral-peak constellation +
+the global-store provenance design above.
+
 ## The aggressive candidate pass (2026-07-05, additive)
 
 `AdBoundaryDetector` is a read-only last pass over the final output file that emits
