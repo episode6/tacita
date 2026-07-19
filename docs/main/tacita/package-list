@@ -1,6 +1,11 @@
 $dokka.format:html-v1
 $dokka.linkExtension:html
 $dokka.location:com.episode6.tacita////PointingToDeclaration/tacita/com.episode6.tacita/index.html
+$dokka.location:com.episode6.tacita/AcousticFingerprintInfo///PointingToDeclaration/tacita/com.episode6.tacita/-acoustic-fingerprint-info/index.html
+$dokka.location:com.episode6.tacita/AcousticFingerprintInfo/AcousticFingerprintInfo/#kotlin.String#kotlin.Long#kotlin.collections.Map[kotlin.String,com.episode6.tacita.AdFingerprintInfo.Provenance]/PointingToDeclaration/tacita/com.episode6.tacita/-acoustic-fingerprint-info/-acoustic-fingerprint-info.html
+$dokka.location:com.episode6.tacita/AcousticFingerprintInfo/attributions/#/PointingToDeclaration/tacita/com.episode6.tacita/-acoustic-fingerprint-info/attributions.html
+$dokka.location:com.episode6.tacita/AcousticFingerprintInfo/durationMs/#/PointingToDeclaration/tacita/com.episode6.tacita/-acoustic-fingerprint-info/duration-ms.html
+$dokka.location:com.episode6.tacita/AcousticFingerprintInfo/id/#/PointingToDeclaration/tacita/com.episode6.tacita/-acoustic-fingerprint-info/id.html
 $dokka.location:com.episode6.tacita/AdBoundaryCandidate.Role.END///PointingToDeclaration/{"org.jetbrains.dokka.links.EnumEntryDRIExtra":{"key":"org.jetbrains.dokka.links.EnumEntryDRIExtra"}}tacita/com.episode6.tacita/-ad-boundary-candidate/-role/-e-n-d/index.html
 $dokka.location:com.episode6.tacita/AdBoundaryCandidate.Role.JOIN///PointingToDeclaration/{"org.jetbrains.dokka.links.EnumEntryDRIExtra":{"key":"org.jetbrains.dokka.links.EnumEntryDRIExtra"}}tacita/com.episode6.tacita/-ad-boundary-candidate/-role/-j-o-i-n/index.html
 $dokka.location:com.episode6.tacita/AdBoundaryCandidate.Role.START///PointingToDeclaration/{"org.jetbrains.dokka.links.EnumEntryDRIExtra":{"key":"org.jetbrains.dokka.links.EnumEntryDRIExtra"}}tacita/com.episode6.tacita/-ad-boundary-candidate/-role/-s-t-a-r-t/index.html
@@ -50,8 +55,11 @@ $dokka.location:com.episode6.tacita/Tacita.Companion///PointingToDeclaration/ta
 $dokka.location:com.episode6.tacita/Tacita.Companion/withClient/#kotlin.Boolean#kotlin.Function1[kotlin.String,kotlin.Unit]#kotlin.Function0[io.ktor.client.HttpClient]/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/-companion/with-client.html
 $dokka.location:com.episode6.tacita/Tacita.Companion/withLogger/#kotlin.Function1[kotlin.String,kotlin.Unit]/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/-companion/with-logger.html
 $dokka.location:com.episode6.tacita/Tacita///PointingToDeclaration/tacita/com.episode6.tacita/-tacita/index.html
+$dokka.location:com.episode6.tacita/Tacita/acousticFingerprints/#okio.Path/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/acoustic-fingerprints.html
+$dokka.location:com.episode6.tacita/Tacita/confirmAcousticAd/#okio.Path#okio.Path#kotlin.String#kotlin.Long#kotlin.Long/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/confirm-acoustic-ad.html
 $dokka.location:com.episode6.tacita/Tacita/confirmAd/#okio.Path#okio.Path#kotlin.Long#kotlin.Long/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/confirm-ad.html
-$dokka.location:com.episode6.tacita/Tacita/downloadPodcast/#kotlin.String#okio.Path#okio.Path#kotlin.Boolean#kotlin.Boolean#kotlin.Long?#kotlin.Long?#okio.Path?/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/download-podcast.html
+$dokka.location:com.episode6.tacita/Tacita/downloadPodcast/#kotlin.String#okio.Path#okio.Path#kotlin.Boolean#kotlin.Boolean#kotlin.Long?#kotlin.Long?#okio.Path?#okio.Path?#kotlin.String?/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/download-podcast.html
 $dokka.location:com.episode6.tacita/Tacita/fingerprints/#okio.Path/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/fingerprints.html
+$dokka.location:com.episode6.tacita/Tacita/removeAcousticFingerprint/#okio.Path#kotlin.String/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/remove-acoustic-fingerprint.html
 $dokka.location:com.episode6.tacita/Tacita/removeFingerprint/#okio.Path#kotlin.String/PointingToDeclaration/tacita/com.episode6.tacita/-tacita/remove-fingerprint.html
 com.episode6.tacita
