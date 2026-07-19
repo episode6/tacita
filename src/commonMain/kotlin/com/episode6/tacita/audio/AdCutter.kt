@@ -1,5 +1,6 @@
 package com.episode6.tacita.audio
 
+import com.episode6.tacita.AdFingerprintInfo
 import com.episode6.tacita.systemFileSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -32,6 +33,7 @@ internal class AdCutter(
   private val log: (String) -> Unit = {},
   private val mp3SegmentParser: Mp3SegmentParser = Mp3SegmentParser(),
   private val id3ChapterShifter: Id3ChapterShifter = Id3ChapterShifter(),
+  private val adFingerprinter: AdFingerprinter = AdFingerprinter(),
 ) {
 
   data class Config(
@@ -49,8 +51,13 @@ internal class AdCutter(
       val secondsRemoved: Double,
       /** The removed ranges, in the pre-cut file's timeline; sorted and non-overlapping. */
       val cuts: List<Cut>,
+      /**
+       * DIFF_PROVEN fingerprints of the removed ranges (the diff proved they were
+       * injected), extracted before the bytes were discarded; empty unless requested.
+       */
+      val fingerprints: List<StoredAdFingerprint> = emptyList(),
     ) : Result() {
-      // the cut list is payload for the ad-boundary pass, not for the diagnostic log line
+      // the cut/fingerprint lists are payload for later passes, not for the diagnostic log line
       override fun toString(): String = "AdsCut(adBreaksRemoved=$adBreaksRemoved, secondsRemoved=$secondsRemoved)"
     }
 
@@ -63,14 +70,20 @@ internal class AdCutter(
     }
   }
 
-  suspend fun cutAds(file: Path, referenceFile: Path, config: Config = Config()): Result =
+  suspend fun cutAds(
+    file: Path,
+    referenceFile: Path,
+    config: Config = Config(),
+    /** When true, [Result.AdsCut.fingerprints] carries fingerprints of the removed ranges. */
+    seedFingerprints: Boolean = false,
+  ): Result =
     withContext(Dispatchers.IO) {
-      val result = cut(file, referenceFile, config)
+      val result = cut(file, referenceFile, config, seedFingerprints)
       log("AdCutter: ${file.name}: $result")
       result
     }
 
-  private fun cut(file: Path, referenceFile: Path, config: Config): Result {
+  private fun cut(file: Path, referenceFile: Path, config: Config, seedFingerprints: Boolean): Result {
     val data = fileSystem.read(file) { readByteArray() }
     val reference = fileSystem.read(referenceFile) { readByteArray() }
     if (data.contentEquals(reference)) return Result.NoAdsFound
@@ -125,7 +138,22 @@ internal class AdCutter(
     } finally {
       fileSystem.delete(tempFile, mustExist = false)
     }
-    return Result.AdsCut(adBreaksRemoved = cuts.size, secondsRemoved = secondsRemoved, cuts = cuts)
+    // extracted from the pre-cut bytes: after the move above, the removed ranges only
+    // exist in `data`
+    val fingerprints = if (seedFingerprints) {
+      cuts.mapNotNull {
+        adFingerprinter.extract(
+          data = data,
+          fromByte = it.fromByte,
+          toByte = it.toByte,
+          durationSeconds = it.seconds,
+          provenance = AdFingerprintInfo.Provenance.DIFF_PROVEN,
+        )
+      }
+    } else {
+      emptyList()
+    }
+    return Result.AdsCut(adBreaksRemoved = cuts.size, secondsRemoved = secondsRemoved, cuts = cuts, fingerprints = fingerprints)
   }
 
   /**
@@ -278,30 +306,14 @@ internal class AdCutter(
       return true
     }
 
-    private fun hash(bytes: ByteArray, from: Int): Long {
-      var h = 0L
-      for (k in from until from + ANCHOR_BYTES) {
-        h = h * HASH_BASE + (bytes[k].toLong() and 0xFF)
-      }
-      return h
-    }
+    private fun hash(bytes: ByteArray, from: Int): Long = RollingHash.hash(bytes, from)
 
-    private fun roll(h: Long, out: Byte, inp: Byte): Long =
-      (h - (out.toLong() and 0xFF) * HASH_POW) * HASH_BASE + (inp.toLong() and 0xFF)
-
-    private companion object {
-      const val HASH_BASE = 1_000_003L
-      val HASH_POW = run {
-        var p = 1L
-        repeat(ANCHOR_BYTES - 1) { p *= HASH_BASE }
-        p
-      }
-    }
+    private fun roll(h: Long, out: Byte, inp: Byte): Long = RollingHash.roll(h, out, inp)
   }
 
   private companion object {
     /** Anchor block size: shared runs at least twice this long are always found. */
-    const val ANCHOR_BYTES = 4096
+    const val ANCHOR_BYTES = RollingHash.BLOCK_BYTES
 
     /** How far past the first realignment hit to keep looking for a nearer rejoin point. */
     const val REALIGN_LOOKAHEAD_BYTES = 4 * 1024 * 1024

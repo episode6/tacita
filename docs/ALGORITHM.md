@@ -401,9 +401,61 @@ Design constraints recorded now so they survive until it's built:
   is the escalation path (and Simplecast's per-episode normalization already motivates
   it — see the verdict above).
 
-Open before shipping: Acast player-tier reuse measurement, cross-week creative
-recurrence (both same-host and the fill-rotation shelf life of a stored fingerprint),
-and the store format / `Tacita` API shape.
+### Shipped: the byte-level layer (2026-07-19, log/candidate-only)
+
+Landed the same day as the research above, honoring every constraint it recorded:
+
+- `Tacita.downloadPodcast(fingerprintStore = …)` maintains a per-feed store file:
+  applied diff cuts auto-seed `DIFF_PROVEN` fingerprints (extracted from the pre-cut
+  bytes before they're discarded); `Tacita.confirmAd(file, store, startMs, endMs)`
+  records `HUMAN_CONFIRMED` creatives; `fingerprints`/`removeFingerprint` list/revoke.
+- A fingerprint is the 4KB-aligned rolling-hash + SHA-256 of each block of the creative,
+  matched by a streaming one-pass scan (mobile-safe; the OOM lesson) with per-block
+  digest verification and a 5s floor on both storage and reported matches (the observed
+  benign byte-repeat class tops out at 0.9s). Edge slop in a confirmed range costs only
+  the edge blocks — the interior still aligns.
+- Matches are **candidates only** (`AdBoundaryCandidate.Source.FINGERPRINT`, priors
+  0.95/0.85 — see the confidence table): per the ship-log-only rule nothing cuts on a
+  fingerprint match until real-feed ear verification. Fingerprints matching a
+  verified-clean serving are pruned automatically; store failures never fail a download.
+
+Open before graduating matches from candidates to cuts: real-feed ear verification of
+matched spans (playbook step 5). Still open from the research: Acast player-tier reuse
+measurement, cross-week creative recurrence (the fill-rotation shelf life of a stored
+fingerprint), and the acoustic layer for Simplecast-class hosts.
+
+### Store scoping (2026-07-19 follow-up): per-feed for the byte layer, global for the acoustic layer
+
+Questioned same-day (ghackett): the same ad campaigns do run across many feeds, so why
+scope stores per-feed? Recording the reasoning so the decision doesn't fossilize as
+unexamined dogma:
+
+- **The prior-art argument mostly doesn't apply to us.** The single-show scoping in the
+  surveyed practitioner tools exists because they discover ads *by repetition* — there,
+  cross-show matching flags shared network assets (intros, jingles) as ads. Tacita's
+  store is provenance-gated (diff-proven or ear-confirmed), not repetition-based, so a
+  stored creative matched in another feed would usually be a correct hit. Don't
+  over-weight that precedent.
+- **What actually keeps the byte layer per-feed:** (1) cross-feed *byte* identity is
+  unverified and structurally unlikely — it requires one host serving the identical
+  encode to multiple shows; Simplecast's per-episode normalization rules it out there,
+  cross-host is impossible by construction, and same-host sharing (e.g. two Audioboom
+  128k shows) is unmeasured. A probe was considered and deliberately deferred
+  (2026-07-19): the two Audioboom feeds in hand (Nextlander, PSA) target disjoint
+  audiences and are unlikely to share campaigns, so a null result would prove nothing.
+  (2) **The clean-serving prune is only sound per-feed**: with a shared store, a
+  creative baked into feed B's publisher upload (e.g. a network cross-promo) would
+  prune a fingerprint that is a real, ear-confirmed ad in feed A — one feed's canonical
+  content deleting another feed's confirmations.
+- Scoping is the *consumer's* choice mechanically — the store is just a path the caller
+  passes — so this is a documented recommendation, not an enforced constraint.
+- **Design requirement (ghackett, 2026-07-19): the acoustic layer MUST support global /
+  cross-feed stores.** Level-invariant matching is exactly where cross-feed ads pay off
+  (same campaign audio across shows and hosts, different bytes), so its design must
+  solve what per-feed scoping currently sidesteps: per-feed provenance/attribution on
+  each fingerprint, and feed-scoped clean-serving pruning (a clean serving revokes a
+  fingerprint only for the feed that observed it — or downgrades it — never deletes
+  another feed's confirmation outright).
 
 ## The aggressive candidate pass (2026-07-05, additive)
 
@@ -440,6 +492,12 @@ Signals surfaced (all data the pipeline already computed and previously discarde
    `Id3ChapterShifter`; shifting behavior unchanged): every chapter start plus the final
    end, read from the output file's tag *after* any CHAP shifting, so times are already in
    the output timeline. Audioboom labels ad slots this way.
+5. **Fingerprint matches** (2026-07-19, only when the caller passes a `fingerprintStore`):
+   byte-exact recurrences of stored creatives still present in the output file — the ads
+   that survived every earlier stage (sticky fill that blinded the diff). Emitted as
+   START/END pairs spanning the matched creative. See "Cross-episode creative reuse" for
+   the store's design and its safeguards; per the ship-log-only rule, matches surface as
+   candidates and never cut.
 
 Hygiene: near-duplicates within one source merge (250ms window, earliest wins); different
 sources are never merged — two signals agreeing at the same timestamp is corroboration the
@@ -455,7 +513,9 @@ error rates** — per the meta-lesson, nothing here has been ear-calibrated, so 
 
 | signal | base | reasoning |
 |---|---|---|
+| `FINGERPRINT` (human-confirmed) | 0.95 | byte-exact recurrence of a creative a human ear-verified as an ad |
 | `DIFF_CUT` applied splice | 0.9 | the diff *proved* injected material and the cutter acted |
+| `FINGERPRINT` (diff-proven) | 0.85 | byte-exact recurrence of a creative the diff proved injected in an earlier download |
 | `DAI_SLOT` | 0.8 | the host's own ad server placed a slot here |
 | `DIFF_CUT` guard-refused range | 0.65 | real byte-diff evidence the guards declined to act on |
 | `SEGMENT_BOUNDARY` | 0.4 | an encode join — ads and content assembly alike (dead end 1) |

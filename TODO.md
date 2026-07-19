@@ -2,28 +2,27 @@
 
 Known gaps worth filling. Ranked by value.
 
-## 0. Confirmed-creative fingerprint store (R&D; two-host validation 2026-07-19)
+## 0. Confirmed-creative fingerprint store (byte layer SHIPPED 2026-07-19; follow-ups open)
 
-Injected creatives repeat across episodes of a feed; show content is (nearly) unique per
-episode. The 2026-07-19 experiments (docs/ALGORITHM.md "Cross-episode creative reuse")
-measured both host classes: on Audioboom the repeats are **byte-identical** (81–90% of
-two episodes' fill shared, slot-independent, zero collisions with clean content) so
-byte-level fingerprints (anchor hashes + strong digest, reusing the cutter's machinery)
-get full cross-episode power; on Simplecast the same creative recurs with **different
-bytes** (per-episode loudness normalization: same duration + encoded size, PCM
-correlation 0.998, gain +1.8dB), so cross-episode matching there needs a level-invariant
-acoustic layer (Wang-2003 constellation over decoded PCM → needs a common-code mp3
-decoder; minimp3 is CC0). Layered shape: byte-level store first (Audioboom-class
-cross-episode + same-episode redownloads everywhere), acoustic layer as the follow-up.
-Auto-seed `DIFF_PROVEN` fingerprints from applied diff cuts; consumers submit
-`HUMAN_CONFIRMED` ranges (an ear-verified candidate); match content-addressed on future
-downloads. Constraints (see the ALGORITHM.md entry): only HUMAN_CONFIRMED + full-digest
-matches may ever cut, ship log-only until ear-verified, drop any fingerprint matching a
-verified-clean serving, enforce a minimum creative length, support revocation. Open:
-Acast player-tier reuse, cross-week recurrence/shelf life, store format + API shape.
-Clean-source discovery covers the currently-failing hosts, so still not urgent until a
-host fills every tier and leaks no clean serving — but this is now also the only
-designed answer to the byte-identical-in-both-copies blind spot.
+The 2026-07-19 experiments (docs/ALGORITHM.md "Cross-episode creative reuse") measured
+both host classes: Audioboom serves repeats **byte-identically** (81–90% of two episodes'
+fill shared, slot-independent, zero collisions with clean content); Simplecast re-encodes
+per episode (same creative, PCM correlation 0.998, gain +1.8dB, zero shared bytes). The
+byte-level layer shipped the same day: `downloadPodcast(fingerprintStore=…)` with
+`DIFF_PROVEN` auto-seeding, `Tacita.confirmAd` for `HUMAN_CONFIRMED` creatives,
+candidates-only matching (`Source.FINGERPRINT`), clean-serving pruning, revocation.
+Remaining:
+
+- **Graduate matches from candidates to cuts** — needs real-feed ear verification of
+  matched spans first (playbook step 5); then HUMAN_CONFIRMED + full-digest matches
+  could cut (the recorded cutting-authority constraint).
+- **Acoustic layer for Simplecast-class hosts** — level-invariant Wang-2003
+  constellation over decoded PCM; needs a common-code mp3 decoder (minimp3 is CC0).
+  **Design requirement (2026-07-19): must support global/cross-feed stores** — that's
+  where cross-feed campaigns pay off — which means per-feed provenance on fingerprints
+  and feed-scoped clean-serving pruning (see docs/ALGORITHM.md "Store scoping").
+- **Field measurements still owed**: Acast player-tier reuse, cross-week creative
+  recurrence (fingerprint shelf life).
 
 ## 1. Run tests on non-JVM targets
 

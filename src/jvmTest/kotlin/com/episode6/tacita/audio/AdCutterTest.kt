@@ -4,6 +4,7 @@ import assertk.assertThat
 import assertk.assertions.hasSize
 import assertk.assertions.isBetween
 import assertk.assertions.isCloseTo
+import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import assertk.assertions.isInstanceOf
 import assertk.assertions.isNotEmpty
@@ -150,6 +151,30 @@ class AdCutterTest {
     assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
       .prop(AdCutter.Result.AdsCut::secondsRemoved).isCloseTo(2.1, SECONDS_TOLERANCE)
     assertThat(file.readBytes()).isEqualTo(contentA + headerless(contentB))
+  }
+
+  @Test fun `seeds diff-proven fingerprints of the removed ranges when requested`() = runBlocking {
+    val adBreak = adA + adB + adA // ~7.3s: above the fingerprint length floor
+    val longContent = contentA + contentB + contentA + contentB // keeps the break under the 25% guard
+    val file = tempFile(longContent + adBreak)
+    val reference = tempFile(longContent)
+
+    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath(), seedFingerprints = true)
+
+    assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
+    val fingerprint = (result as AdCutter.Result.AdsCut).fingerprints.single()
+    assertThat(fingerprint.provenance).isEqualTo(com.episode6.tacita.AdFingerprintInfo.Provenance.DIFF_PROVEN)
+    assertThat(fingerprint.durationMs).isBetween(6_800L, 7_800L)
+  }
+
+  @Test fun `cuts below the fingerprint length floor seed nothing`() = runBlocking {
+    val file = tempFile(contentA + adA + contentB) // the ~2.1s cut is too short to fingerprint
+    val reference = tempFile(contentA + contentB)
+
+    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath(), seedFingerprints = true)
+
+    assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
+    assertThat((result as AdCutter.Result.AdsCut).fingerprints).isEmpty()
   }
 
   @Test fun `shifts id3 chapter timestamps by the material cut before them`() = runBlocking {

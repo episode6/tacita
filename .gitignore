@@ -12,3 +12,4 @@ build/
 out/
 gradle/gradle-daemon-jvm.properties
 .kotlin/
+__pycache__/

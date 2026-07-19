@@ -2,6 +2,39 @@
 
 ### v0.0.4-SNAPSHOT - Unreleased
 
+- **Ad-creative fingerprint store** (opt-in): `Tacita.downloadPodcast` gains an optional
+  `fingerprintStore: Path` param. When provided (with `cutAds`), tacita maintains a store of
+  known ad-creative fingerprints at that path: every applied diff cut auto-seeds a
+  `DIFF_PROVEN` fingerprint of the removed bytes; recurrences of stored creatives still
+  present in the output file (e.g. sticky fill that blinded the diff) surface as
+  `AdBoundaryCandidate.Source.FINGERPRINT` START/END candidates (matches never cut the
+  file — the feature ships log-only per docs/ALGORITHM.md); and fingerprints that match a
+  verified-clean serving are pruned automatically. Keep one store per feed. Matching is
+  byte-exact (4KB rolling-hash blocks verified by SHA-256), streams the file (mobile-safe),
+  and only fingerprints/reports runs ≥ 5s. Store failures never fail a download.
+- **`Tacita.confirmAd(file, fingerprintStore, startMs, endMs)`** (new API): records a
+  human-confirmed ad — fingerprints the creative at that range of a downloaded file and
+  stores it as `HUMAN_CONFIRMED` (the strongest evidence tier; never downgraded). Edge
+  imprecision is tolerated: episode-unique bytes at the edges simply never match again while
+  the creative interior still does. Plus `Tacita.fingerprints(store)` and
+  `Tacita.removeFingerprint(store, id)` for listing/revocation, and the public
+  `AdFingerprintInfo` (id, provenance, durationMs, sizeBytes) describing store entries.
+  Note: callers implementing `Tacita` themselves must add the new methods/param; exhaustive
+  `when`s over `AdBoundaryCandidate.Source` must add `FINGERPRINT`
+- Confidence priors for the new source: `FINGERPRINT` candidates rank 0.95 (human-confirmed)
+  / 0.85 (diff-proven) — a byte-exact recurrence of an ear-verified ad outranks every
+  machine signal (see docs/ALGORITHM.md confidence table)
+- Internal: `AdFingerprinter` (block fingerprint extract/match), `AdFingerprintStoreFile`
+  (atomic flat-file codec), `RollingHash` (shared by `AdCutter`'s anchor index and block
+  matching), `Mp3SegmentParser.secondsAtBytes`/`byteRangeForMs` (streaming time↔byte
+  mapping), `AdCutter.Result.AdsCut.fingerprints` (seeding payload)
+- CI: snapshot publishes now use Maven's timestamped unique-snapshot protocol (new
+  `scripts/upload-snapshots.py` — uploads timestamped filenames and re-PUTs each module's
+  `maven-metadata.xml` with an incremented buildNumber). The previous plain PUTs of
+  non-unique snapshot filenames only registered on a version's first publish; sonatype
+  central accepted but never served the re-uploads, so 0.0.4-SNAPSHOT kept serving its
+  July 14 (pre-fingerprint) bytes no matter how many times it was republished
+
 ### v0.0.3 - Released 7/12/2026
 
 - **Confidence scores on ad-boundary candidates** (API break): `AdBoundaryCandidate` gains
