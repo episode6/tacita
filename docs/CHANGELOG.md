@@ -28,6 +28,12 @@
   (atomic flat-file codec), `RollingHash` (shared by `AdCutter`'s anchor index and block
   matching), `Mp3SegmentParser.secondsAtBytes`/`byteRangeForMs` (streaming time↔byte
   mapping), `AdCutter.Result.AdsCut.fingerprints` (seeding payload)
+- CI: snapshot publishes now use Maven's timestamped unique-snapshot protocol (new
+  `scripts/upload-snapshots.py` — uploads timestamped filenames and re-PUTs each module's
+  `maven-metadata.xml` with an incremented buildNumber). The previous plain PUTs of
+  non-unique snapshot filenames only registered on a version's first publish; sonatype
+  central accepted but never served the re-uploads, so 0.0.4-SNAPSHOT kept serving its
+  July 14 (pre-fingerprint) bytes no matter how many times it was republished
 
 ### v0.0.3 - Released 7/12/2026
 
