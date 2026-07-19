@@ -11,6 +11,7 @@ junit5-core = "5.9.1"
 junit5-platform = "1.9.1"
 assertk-core = "0.28.1"
 jlayer-core = "1.0.1"
+jump3r-core = "1.0.5"
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor-core" }
@@ -26,6 +27,7 @@ junit5-launcher = { module = "org.junit.platform:junit-platform-launcher", versi
 assertk-core = { module = "com.willowtreeapps.assertk:assertk", version.ref = "assertk-core" }
 assertk-jvm = { module = "com.willowtreeapps.assertk:assertk-jvm", version.ref = "assertk-core" }
 jlayer-core = { module = "javazoom:jlayer", version.ref = "jlayer-core" }
+jump3r-core = { module = "de.sciss:jump3r", version.ref = "jump3r-core" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin-core" }

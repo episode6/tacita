@@ -35,6 +35,9 @@ kotlin {
         implementation(libs.assertk.jvm)
         // jlayer: independent reference decoder for Mp3Decoder verification
         implementation(libs.jlayer.core)
+        // jump3r (pure-java LAME port): in-test encoder for acoustic-fingerprint
+        // cross-encode fixtures (same tool that generated stereo.mp3)
+        implementation(libs.jump3r.core)
       }
     }
   }

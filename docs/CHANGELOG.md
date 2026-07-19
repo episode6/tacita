@@ -2,6 +2,19 @@
 
 ### v0.0.5-SNAPSHOT - Unreleased
 
+- Internal: **acoustic fingerprinter core** (`AcousticFingerprinter` + `Fft`) — the
+  level-invariant matching layer over decoded PCM that the mp3-decoder groundwork existed
+  for: Hann STFT (1024/512 at 11.025kHz) → gain-invariant spectral-peak constellation →
+  Shazam-style landmark hashes, matched by per-fingerprint time-offset consensus. Pinned
+  in tests: a creative fingerprinted from one encode is found in an episode that embeds
+  the same audio through a different encoder run (different bitrate, sample rate and
+  gain — the Simplecast-class serving shape) and across independently-encoded stitched
+  segments, while degenerate audio (silence, held tones) is rejected at extraction. Not
+  yet wired into `Tacita.downloadPodcast` — store integration awaits the global-store
+  provenance design (docs/ALGORITHM.md). No public API or behavior change. New
+  jvmTest-only dependency: jump3r (pure-java LAME port, used as an in-test encoder for
+  cross-encode fixtures)
+
 ### v0.0.4 - Released 7/19/2026
 
 - Internal: **common-code mp3 decoder** (`Mp3Decoder` + `Mp3Tables`) — a pure-Kotlin port
