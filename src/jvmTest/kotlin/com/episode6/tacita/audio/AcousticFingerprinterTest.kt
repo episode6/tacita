@@ -14,12 +14,8 @@ import okio.FileHandle
 import okio.Path.Companion.toOkioPath
 import okio.use
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.PI
-import kotlin.math.min
 import kotlin.math.sin
-import kotlin.random.Random
 import kotlin.test.Test
 
 /**
@@ -149,65 +145,11 @@ class AcousticFingerprinterTest {
     assertThat(matches.single().matchedSeconds).isGreaterThanOrEqualTo(AcousticFingerprinter.MIN_MATCH_SECONDS)
   }
 
-  /**
-   * Deterministic speech-shaped test audio: 250ms blocks of three random tones in the
-   * 200-4000Hz band with a 10ms noise transient at each block start — enough moving
-   * spectral structure for a distinctive peak constellation, distinct per seed.
-   */
-  private fun synth(seed: Int, seconds: Double, hz: Int = 44100): FloatArray {
-    val random = Random(seed)
-    val total = (seconds * hz).toInt()
-    val out = FloatArray(total)
-    val blockLen = hz / 4
-    var pos = 0
-    while (pos < total) {
-      val len = min(blockLen, total - pos)
-      val freqs = DoubleArray(3) { 200 + random.nextDouble() * 3800 }
-      val amps = DoubleArray(3) { 0.1 + random.nextDouble() * 0.1 }
-      for (i in 0 until len) {
-        var v = 0.0
-        for (t in 0 until 3) v += amps[t] * sin(2.0 * PI * freqs[t] * i / hz)
-        if (i < hz / 100) v += (random.nextDouble() * 2 - 1) * 0.15
-        out[pos + i] = v.toFloat()
-      }
-      pos += len
-    }
-    return out
-  }
-
   private fun landmarksOf(pcm: FloatArray, gain: Float): AcousticLandmarkSession.Landmarks {
     val session = AcousticLandmarkSession()
     val scaled = FloatArray(pcm.size) { pcm[it] * gain }
     session.feed(scaled, 0, scaled.size, channels = 1, hz = 44100)
     return session.finish()
-  }
-
-  private fun encodeMp3(pcm: FloatArray, kbps: Int, resampleKHz: String? = null, scale: Double? = null): ByteArray {
-    val wav = tempFile(".wav").apply { writeBytes(monoWav(pcm, hz = 44100)) }
-    val mp3 = tempFile(".mp3")
-    val args = buildList {
-      add("--quiet")
-      add("-b")
-      add(kbps.toString())
-      resampleKHz?.let { add("--resample"); add(it) }
-      scale?.let { add("--scale"); add(it.toString()) }
-      add(wav.absolutePath)
-      add(mp3.absolutePath)
-    }
-    val code = de.sciss.jump3r.Main().run(args.toTypedArray())
-    check(code == 0) { "jump3r failed with exit code $code (args: $args)" }
-    return mp3.readBytes()
-  }
-
-  private fun monoWav(pcm: FloatArray, hz: Int): ByteArray {
-    val dataBytes = pcm.size * 2
-    val bytes = ByteBuffer.allocate(44 + dataBytes).order(ByteOrder.LITTLE_ENDIAN)
-    bytes.put("RIFF".toByteArray()).putInt(36 + dataBytes).put("WAVE".toByteArray())
-    bytes.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1)
-    bytes.putInt(hz).putInt(hz * 2).putShort(2).putShort(16)
-    bytes.put("data".toByteArray()).putInt(dataBytes)
-    pcm.forEach { bytes.putShort((it.coerceIn(-1f, 32767f / 32768f) * 32768).toInt().toShort()) }
-    return bytes.array()
   }
 
   private fun extract(bytes: ByteArray): AcousticFingerprint? = withHandle(bytes) { fingerprinter.extract(it) }

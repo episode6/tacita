@@ -70,6 +70,31 @@ internal class AcousticFingerprinter {
   fun extract(handle: FileHandle, fromMs: Long = 0, toMs: Long = Long.MAX_VALUE): AcousticFingerprint? {
     val session = AcousticLandmarkSession()
     decodeInto(handle, fromMs, toMs, session)
+    return finishExtract(session)
+  }
+
+  /**
+   * Fingerprints the audio decoded from `data[fromByte, toByte)` — a creative's mp3 bytes
+   * already in memory (e.g. a diff-cut range extracted from the pre-cut file before its
+   * bytes are discarded). Same floors as the [FileHandle] overload. When the range starts
+   * mid-segment the decoder skips frames until the bit reservoir primes, losing a fraction
+   * of a second at the edge — tolerated the same way edge slop is everywhere else.
+   */
+  fun extract(data: ByteArray, fromByte: Int, toByte: Int): AcousticFingerprint? {
+    val session = AcousticLandmarkSession()
+    val decoder = Mp3Decoder()
+    val pcm = FloatArray(Mp3Decoder.MAX_SAMPLES_PER_FRAME)
+    var at = fromByte
+    while (at < toByte) {
+      val samples = decoder.decodeFrame(data, at, toByte - at, pcm)
+      if (samples > 0) session.feed(pcm, 0, samples, decoder.info.channels, decoder.info.hz)
+      if (decoder.info.frameBytes == 0) break
+      at += decoder.info.frameBytes
+    }
+    return finishExtract(session)
+  }
+
+  private fun finishExtract(session: AcousticLandmarkSession): AcousticFingerprint? {
     val landmarks = session.finish()
     if (landmarks.durationMs < MIN_FINGERPRINT_SECONDS * 1000) return null
     if (landmarks.durationMs > MAX_FINGERPRINT_SECONDS * 1000) return null
