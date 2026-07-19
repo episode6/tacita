@@ -271,6 +271,140 @@ a same-tier reference (including waveform-level ideas). Findings, so nobody re-r
   guards-skip-the-file blind spot. Large lift (mp3 decoder across all KMP targets);
   deliberately deferred until such a host is actually observed. None is today.
 
+## Cross-episode creative reuse — the fingerprint experiment (2026-07-19)
+
+Prompted by a proposal (ghackett) to add **human-confirmed ad fingerprints**: a consumer
+app surfaces a suspected ad, a human confirms it is one, tacita stores a fingerprint and
+cuts that creative from future episodes (tacita owns the logic only, never the UI). The
+load-bearing question for viability: does the same creative recur **byte-identically
+across different episodes** of a feed, or does the ad platform re-transcode per serving?
+Byte-identity decides whether fingerprints can reuse the existing rolling-hash machinery
+or need an mp3 decoder + acoustic (PCM-level) fingerprints across every KMP target.
+
+Method (live probes, 2026-07-19): The Nextlander Podcast (Audioboom), episodes 8923058
+(the known 4170s special) and 8920601 (ep 254, 10737s), fetched minutes apart: filled
+okhttp-tier copies (sticky — 1-byte-Range probed twice each: 71,444,498 / 176,995,454
+bytes) plus each episode's leaked `fallback_url` static copy (66,843,410 — byte-count
+identical to the 07-04 measurement, so the static copy is stable across 15 days — and
+171,912,062). Insertion-only alignment of filled vs clean recovered each episode's
+injected fill exactly (both files fully consumed by the walk); shared-run analysis
+(≥4KB runs, any byte alignment, hash-seeded + byte-verified + maximally extended)
+compared the two fills; collision checks compared each fill against the *other*
+episode's clean copy, and 8923058's clean intro/outro (5min each) against all of
+8920601's clean copy (≥2KB).
+
+Findings:
+
+- Fill: 4 ranges in each episode (pre-roll, two mid-rolls at the leaked `m=` slots,
+  post-roll): 287.5s / 4,600,720B in 8923058; 317.7s / 5,083,181B in 8920601.
+- **Creatives are byte-identical across episodes**: 4,119,532B (257.5s) of fill is
+  shared — 89.5% of 8923058's fill, 81.0% of 8920601's. Both mid-roll breaks match
+  end-to-end across the two episodes.
+- **Creatives are slot-independent**: 8923058's post-roll material also appears inside
+  8920601's *pre-roll*, and 8923058's two mid-roll breaks are byte-identical *to each
+  other*. Matching must be content-addressed, never slot/position-based.
+- **Show content never byte-repeats**: zero ≥4KB runs between either fill and the other
+  episode's clean copy, and zero ≥2KB (0.13s) runs between 8923058's clean intro/outro
+  and anywhere in 8920601's clean copy — recurring intro music does *not* repeat
+  byte-identically, because each episode is a fresh whole-episode encode; injected
+  creatives repeat *because* they're stitched in as pre-encoded segments. On this host
+  the two classes are byte-disjoint — the structural safety argument for byte-exact
+  fingerprints.
+- **Rotation is real but unquantified**: 8923058's filled serving grew 70,539,410 →
+  71,444,498 between 07-04 and 07-19 (a different fill decision). The two episodes'
+  fills compared here were served minutes apart; cross-*week* recurrence of a specific
+  creative is not yet measured.
+
+### Same day, second host: Simplecast normalizes creatives per episode (Conan)
+
+Same protocol against Conan (Simplecast), "Mick Jagger" (3602s, declared 57,632,505) and
+"Danny McBride Returns" (3435s, declared 54,971,777): okhttp-tier filled copies (sticky,
+probed twice: 66,523,320 / 62,648,835) vs bot-tier clean canonicals (57,632,078 /
+54,971,350 ≈ declared). Findings, materially different from Audioboom:
+
+- **The insertion-only alignment assumption fails here** — each clean canonical carries
+  2×416-byte stubs at the mid-roll splice points that the filled serving *replaces*
+  (serving-model fact 4 at frame granularity; the canonical itself is a stitch). A
+  two-sided AnchorIndex-style walk aligns cleanly: pre-roll + 2 mid-rolls + post-roll in
+  both episodes (555.8s / 479.9s of fill).
+- **Zero cross-episode byte sharing** (≥4KB) between the two fills, despite being served
+  minutes apart. Yet **within one episode creative bytes do repeat**: a 71.52s creative
+  appears byte-identically in both of Jagger's mid-rolls — the stitch concatenates
+  pre-encoded segments on this host too.
+- **Same creative, different bytes**: both episodes' pre-rolls open with a 42.68s
+  creative — identical duration, identical encoded size (682,946B in both) — sharing
+  zero bytes. Decoded PCM (gstreamer): zero-lag correlation 0.998, amplitude ratio
+  ~1.23× (+1.8dB). **Ear-verified (ghackett, 2026-07-19): the two extracted creatives
+  are the same ad.** **Simplecast loudness-normalizes each creative into the episode
+  before encoding**, so encoded bytes are per-episode even for the same creative.
+- **Content is not perfectly unique across episodes on this host**: 1.13s (two runs,
+  ≤14KB each) of the two clean copies' outro tails are byte-identical — the canonical
+  stitch embeds shared pre-encoded outro material. Minimum-fingerprint-length and
+  never-match-verified-clean safeguards are therefore *required by observation*, not
+  theoretical (though both runs sit far below any real creative length).
+
+### Verdict
+
+**Viable — as a layered design, with the layer depending on host class:**
+
+- **Audioboom-class** (global creative cache, byte-identical cross-episode fill):
+  byte-level fingerprints (anchor-block rolling hashes + a strong digest over the
+  creative + frame-snapped edges) reuse the cutter's existing machinery with no mp3
+  decoder and get full cross-episode power. Cheaper than the 07-04 research assumed.
+- **Simplecast-class** (per-episode gain-normalized transcode): byte fingerprints only
+  match within a single episode (including future re-downloads of it — still useful);
+  cross-episode matching needs a level-invariant *acoustic* fingerprint over decoded
+  PCM (spectral-peak constellation à la Wang 2003 — gain changes don't move peak
+  locations), which requires an mp3 decoder in common code (the known large lift;
+  minimp3 is CC0 and portable, and fingerprinting only needs mono downsampled output).
+- **Bridge signal, no decoder needed**: creative *duration + encoded CBR byte-length*
+  survives Simplecast's re-encode exactly (42.68s / 682,946B recurred to the byte) —
+  candidate-grade cross-episode corroboration only, never cut authority (standard ad
+  lengths will collide).
+
+Literature (2026-07-19 web survey, agent-assisted) supports the acoustic layer when
+needed: audfprint (MIT) ships a documented known-ad-search workflow with field-tuned
+parameters (11.025kHz, ~100 hashes/s for ads, high min-hit thresholds and time-range
+output); Olaf proves Wang-style matching runs on microcontrollers (compute is a
+non-issue); Chromaprint is a whole-track matcher, wrong shape for ad-in-episode search;
+SponsorBlock-style crowdsourced *timestamps* are structurally broken for DAI (per-listener
+stitches) while fingerprints are position-independent — which is exactly this proposal;
+industry guidance puts creative rotation at 2–4 weeks and campaign flights at 4–8 weeks,
+so confirmed fingerprints should stay useful for weeks and (because DAI backfills old
+episodes with current campaigns) fingerprints learned on new episodes also clean
+back-catalog downloads. No published source addresses byte-stability of re-served
+creatives — the probes above are ahead of public knowledge there.
+
+Design constraints recorded now so they survive until it's built:
+
+- **Provenance grades**: `DIFF_PROVEN` (auto-seeded from applied diff cuts — free, no
+  human, every successful diff bootstraps the store) vs `HUMAN_CONFIRMED` (an
+  ear-verified candidate — the meta-lesson's only-trusted-oracle applied per-creative).
+- **Cutting authority**: at most HUMAN_CONFIRMED + byte-exact full-digest match may cut;
+  DIFF_PROVEN matches surface as high-confidence candidates first and the whole feature
+  ships log-only until ear-verified on real feeds (the unchanged rule). This would be
+  the first cut path with no same-tier reference — permissible only because the human
+  ear replaces the reference as the oracle.
+- **Escape hatches are mandatory**: never keep a fingerprint that also matches a
+  verified-clean serving (protects against stitched-in recurring intros / cross-promos
+  a human might mis-confirm), and consumers must be able to revoke a fingerprint.
+- A confirmed range that accidentally includes episode-unique edge bytes will simply
+  never match again (full digest fails) — the miss direction, which is the acceptable
+  failure. Trimming to segment-join/diff evidence at extraction time keeps the reusable
+  creative core matchable.
+- **Minimum fingerprint length** (several seconds at least): the observed byte-shared
+  clean-content runs (Simplecast outro stubs, ≤0.9s) sit far below real creative
+  lengths (shortest observed ~7s; typical 30–90s), so a length floor alone excludes
+  the known benign-repeat class.
+- Byte fingerprints inherit the known re-encode blind spot: a host that re-transcodes
+  per request defeats them exactly like it defeats byte alignment; the acoustic layer
+  is the escalation path (and Simplecast's per-episode normalization already motivates
+  it — see the verdict above).
+
+Open before shipping: Acast player-tier reuse measurement, cross-week creative
+recurrence (both same-host and the fill-rotation shelf life of a stored fingerprint),
+and the store format / `Tacita` API shape.
+
 ## The aggressive candidate pass (2026-07-05, additive)
 
 `AdBoundaryDetector` is a read-only last pass over the final output file that emits
@@ -406,7 +540,9 @@ desktop and on short episodes, but long episodes yield zero, silently":
 
 - A creative served **byte-identically in both copies at the same slot** survives the cut
   (encoded as an explicit test — the "known blind spot"). Observed cost: ~45s of a 423s
-  fill with a 2h-old reference. Mitigation is reference *age*, not more copies.
+  fill with a 2h-old reference. Mitigation is reference *age*, not more copies — or, once
+  built, the confirmed-creative fingerprint store (see the 2026-07-19 experiment), which
+  needs no reference at all for creatives it has already seen.
 - On the app tier, Acast currently injects nothing (canonical stitch) — the cutter is
   insurance for when that changes, plus an active cutter for player-tier copies.
 - Back-to-back downloads get identical fill → immediate primary+reference double-download
