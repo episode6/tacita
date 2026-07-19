@@ -1,6 +1,8 @@
 # ChangeLog
 
-### v0.0.4-SNAPSHOT - Unreleased
+### v0.0.5-SNAPSHOT - Unreleased
+
+### v0.0.4 - Released 7/19/2026
 
 - **Ad-creative fingerprint store** (opt-in): `Tacita.downloadPodcast` gains an optional
   `fingerprintStore: Path` param. When provided (with `cutAds`), tacita maintains a store of
