@@ -34,6 +34,7 @@ internal class AdCutter(
   private val mp3SegmentParser: Mp3SegmentParser = Mp3SegmentParser(),
   private val id3ChapterShifter: Id3ChapterShifter = Id3ChapterShifter(),
   private val adFingerprinter: AdFingerprinter = AdFingerprinter(),
+  private val acousticFingerprinter: AcousticFingerprinter = AcousticFingerprinter(),
 ) {
 
   data class Config(
@@ -56,6 +57,12 @@ internal class AdCutter(
        * injected), extracted before the bytes were discarded; empty unless requested.
        */
       val fingerprints: List<StoredAdFingerprint> = emptyList(),
+      /**
+       * Level-invariant acoustic fingerprints of the same removed ranges, decoded from
+       * the pre-cut bytes; empty unless requested. Attribution to a feed is the
+       * caller's job — the cutter has no feed identity.
+       */
+      val acousticFingerprints: List<AcousticFingerprint> = emptyList(),
     ) : Result() {
       // the cut/fingerprint lists are payload for later passes, not for the diagnostic log line
       override fun toString(): String = "AdsCut(adBreaksRemoved=$adBreaksRemoved, secondsRemoved=$secondsRemoved)"
@@ -76,14 +83,22 @@ internal class AdCutter(
     config: Config = Config(),
     /** When true, [Result.AdsCut.fingerprints] carries fingerprints of the removed ranges. */
     seedFingerprints: Boolean = false,
+    /** When true, [Result.AdsCut.acousticFingerprints] carries acoustic fingerprints of the removed ranges. */
+    seedAcousticFingerprints: Boolean = false,
   ): Result =
     withContext(Dispatchers.IO) {
-      val result = cut(file, referenceFile, config, seedFingerprints)
+      val result = cut(file, referenceFile, config, seedFingerprints, seedAcousticFingerprints)
       log("AdCutter: ${file.name}: $result")
       result
     }
 
-  private fun cut(file: Path, referenceFile: Path, config: Config, seedFingerprints: Boolean): Result {
+  private fun cut(
+    file: Path,
+    referenceFile: Path,
+    config: Config,
+    seedFingerprints: Boolean,
+    seedAcousticFingerprints: Boolean,
+  ): Result {
     val data = fileSystem.read(file) { readByteArray() }
     val reference = fileSystem.read(referenceFile) { readByteArray() }
     if (data.contentEquals(reference)) return Result.NoAdsFound
@@ -153,7 +168,18 @@ internal class AdCutter(
     } else {
       emptyList()
     }
-    return Result.AdsCut(adBreaksRemoved = cuts.size, secondsRemoved = secondsRemoved, cuts = cuts, fingerprints = fingerprints)
+    val acousticFingerprints = if (seedAcousticFingerprints) {
+      cuts.mapNotNull { acousticFingerprinter.extract(data, fromByte = it.fromByte, toByte = it.toByte) }
+    } else {
+      emptyList()
+    }
+    return Result.AdsCut(
+      adBreaksRemoved = cuts.size,
+      secondsRemoved = secondsRemoved,
+      cuts = cuts,
+      fingerprints = fingerprints,
+      acousticFingerprints = acousticFingerprints,
+    )
   }
 
   /**

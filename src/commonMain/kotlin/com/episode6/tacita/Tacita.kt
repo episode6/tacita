@@ -1,11 +1,15 @@
 package com.episode6.tacita
 
+import com.episode6.tacita.audio.AcousticFingerprint
+import com.episode6.tacita.audio.AcousticFingerprintStoreFile
+import com.episode6.tacita.audio.AcousticFingerprinter
 import com.episode6.tacita.audio.AdBoundaryDetector
 import com.episode6.tacita.audio.AdCutter
 import com.episode6.tacita.audio.AdFingerprintStoreFile
 import com.episode6.tacita.audio.AdFingerprinter
 import com.episode6.tacita.audio.Id3ChapterShifter
 import com.episode6.tacita.audio.Mp3SegmentParser
+import com.episode6.tacita.audio.StoredAcousticFingerprint
 import com.episode6.tacita.audio.StoredAdFingerprint
 import com.episode6.tacita.http.CleanSourceResolver
 import com.episode6.tacita.http.Downloader
@@ -19,6 +23,7 @@ import okio.FileSystem
 import okio.IOException
 import okio.Path
 import okio.use
+import kotlin.time.TimeSource
 
 /** Thrown by [Tacita.downloadPodcast] when the output file exists and `overwrite` is false. */
 public class FileAlreadyExistsException(path: Path) : IOException("file already exists: $path")
@@ -151,6 +156,25 @@ public data class AdFingerprintInfo(
 }
 
 /**
+ * A creative in an acoustic fingerprint store (see [Tacita.downloadPodcast]'s
+ * `acousticFingerprintStore` param and [Tacita.confirmAcousticAd]). Unlike
+ * [AdFingerprintInfo]'s byte layer, acoustic matching survives re-encoding, resampling
+ * and gain normalization, so one acoustic store is designed to be shared globally across
+ * every feed the consumer follows — the same ad campaign runs across many shows and
+ * hosts. That makes evidence per-feed: [attributions] records which feed earned the
+ * fingerprint its place, so one feed's evidence can be revoked (e.g. by that feed's
+ * verified-clean serving) without deleting another feed's confirmation.
+ */
+public data class AcousticFingerprintInfo(
+  /** Content-derived identity: stable for the same decoded audio. */
+  public val id: String,
+  /** Playback duration of the fingerprinted range. */
+  public val durationMs: Long,
+  /** feedId -> the strongest provenance that feed has recorded for this creative. */
+  public val attributions: Map<String, AdFingerprintInfo.Provenance>,
+)
+
+/**
  * Downloads podcast episodes and cuts the dynamically-injected ads out of them.
  *
  * The companion object is itself a [Tacita] backed by ktor's default engine discovery, so simple
@@ -199,7 +223,26 @@ public interface Tacita {
    * avoids false positives from assets shared across a network's shows. Store failures are
    * logged and never fail the download.
    *
-   * The flow throws [FileAlreadyExistsException] if [outputFile] exists and [overwrite] is false.
+   * When [acousticFingerprintStore] is provided (with [cutAds]), tacita additionally
+   * maintains a store of *acoustic* ad-creative fingerprints — level-invariant
+   * spectral-peak constellations over the decoded audio, which survive the per-episode
+   * re-encoding and gain normalization some hosts apply (where byte matching can never
+   * hit). Unlike [fingerprintStore], one acoustic store is designed to be shared globally
+   * across every feed the consumer follows, so it also requires a [feedId] identifying
+   * this download's feed (any stable string — e.g. the feed's canonical URL): applied
+   * diff cuts auto-seed acoustic fingerprints attributed to [feedId], and a
+   * verified-clean serving revokes matching fingerprints *for [feedId] only* — a creative
+   * baked into one show's upload must not delete another feed's confirmation of the same
+   * audio (see [AcousticFingerprintInfo.attributions]). Recurrences of stored creatives
+   * in the output file are currently **log-only**: they are reported to the instance's
+   * log callback (with match timing) and emit no [AdBoundaryCandidate]s — acoustic
+   * matches have not yet been ear-verified against real feeds, the bar every signal must
+   * clear before it may influence consumers (docs/ALGORITHM.md). Store failures are
+   * logged and never fail the download.
+   *
+   * The flow throws [FileAlreadyExistsException] if [outputFile] exists and [overwrite] is
+   * false, and [IllegalArgumentException] if [acousticFingerprintStore] is provided
+   * without a [feedId].
    */
   public fun downloadPodcast(
     url: String,
@@ -210,6 +253,8 @@ public interface Tacita {
     declaredEnclosureBytes: Long? = null,
     expectedDurationSeconds: Long? = null,
     fingerprintStore: Path? = null,
+    acousticFingerprintStore: Path? = null,
+    feedId: String? = null,
   ): Flow<DownloadState>
 
   /**
@@ -247,6 +292,50 @@ public interface Tacita {
    * [AdFingerprintInfo.id]. Returns false when no such fingerprint exists in the store.
    */
   public suspend fun removeFingerprint(fingerprintStore: Path, id: String): Boolean
+
+  /**
+   * Records a human-confirmed ad in an *acoustic* fingerprint store: decodes the audio
+   * spanning `[startMs, endMs]` of [file]'s playback timeline (a file previously produced
+   * by [downloadPodcast]), fingerprints its spectral-peak constellation, and adds it to
+   * [acousticFingerprintStore] with a [AdFingerprintInfo.Provenance.HUMAN_CONFIRMED]
+   * attribution for [feedId], creating the store on first use. Because acoustic matching
+   * survives re-encoding, the confirmation pays off in *every* feed sharing the store —
+   * pass the same global store for all feeds and the feed the confirmation was heard in
+   * as [feedId].
+   *
+   * The range should be the listener's best estimate of the ad's extent; edge imprecision
+   * costs only the edges — the creative's interior constellation still matches. Unlike
+   * [confirmAd], purely stationary audio (silence, a held tone) cannot be acoustically
+   * fingerprinted: its constellation is degenerate and would match unrelated audio, so
+   * such a range is rejected.
+   *
+   * Returns the stored fingerprint's info (with any previously recorded attributions
+   * merged in). If the same creative was already stored, [feedId]'s attribution is
+   * upgraded to HUMAN_CONFIRMED — never downgraded.
+   *
+   * @throws IllegalArgumentException when the range is invalid, shorter than ~5 seconds,
+   *   longer than ~10 minutes, outside the file's audio, or too spectrally uniform to
+   *   fingerprint (e.g. silence or a held tone)
+   * @throws okio.IOException when [file] can't be read or the store can't be written
+   */
+  public suspend fun confirmAcousticAd(
+    file: Path,
+    acousticFingerprintStore: Path,
+    feedId: String,
+    startMs: Long,
+    endMs: Long,
+  ): AcousticFingerprintInfo
+
+  /** The fingerprints currently in [acousticFingerprintStore] (empty when the store doesn't exist). */
+  public suspend fun acousticFingerprints(acousticFingerprintStore: Path): List<AcousticFingerprintInfo>
+
+  /**
+   * Revokes an acoustic fingerprint by its [AcousticFingerprintInfo.id], removing it for
+   * *every* feed attributed to it (a listener deciding one confirmation was made in error
+   * should usually be trusted across feeds — the creative is the same audio everywhere).
+   * Returns false when no such fingerprint exists in the store.
+   */
+  public suspend fun removeAcousticFingerprint(acousticFingerprintStore: Path, id: String): Boolean
 
   public companion object : Tacita by TacitaImpl() {
     /**
@@ -291,12 +380,15 @@ private class TacitaImpl(
   private val reusedClient: HttpClient by lazy(httpClientFactory)
   private val adFingerprinter = AdFingerprinter()
   private val fingerprintStoreFile = AdFingerprintStoreFile(fileSystem)
+  private val acousticFingerprinter = AcousticFingerprinter()
+  private val acousticStoreFile = AcousticFingerprintStoreFile(fileSystem)
   private val adCutter = AdCutter(
     fileSystem = fileSystem,
     log = log,
     mp3SegmentParser = mp3SegmentParser,
     id3ChapterShifter = id3ChapterShifter,
     adFingerprinter = adFingerprinter,
+    acousticFingerprinter = acousticFingerprinter,
   )
   private val adBoundaryDetector = AdBoundaryDetector(
     fileSystem = fileSystem,
@@ -315,7 +407,12 @@ private class TacitaImpl(
     declaredEnclosureBytes: Long?,
     expectedDurationSeconds: Long?,
     fingerprintStore: Path?,
+    acousticFingerprintStore: Path?,
+    feedId: String?,
   ): Flow<DownloadState> = flow {
+    require(acousticFingerprintStore == null || !feedId.isNullOrBlank()) {
+      "acousticFingerprintStore requires a feedId: fingerprints in a shared acoustic store are attributed per feed"
+    }
     val httpClient = if (reuseClient) reusedClient else httpClientFactory()
     try {
       val downloader = Downloader(httpClient = httpClient, fileSystem = fileSystem)
@@ -335,6 +432,9 @@ private class TacitaImpl(
             // a stored "creative" that appears in the publisher's own upload is show
             // content a human mis-confirmed (or a hash accident) — never keep it
             if (fingerprintStore != null) pruneFingerprintsMatchingCleanServing(outputFile, fingerprintStore)
+            if (acousticFingerprintStore != null) {
+              pruneAcousticFingerprintsMatchingCleanServing(outputFile, acousticFingerprintStore, feedId!!)
+            }
             emit(
               DownloadState.Complete(
                 adBoundaryDetector.detect(outputFile, cutResult = null, daiSlotsMs = daiSlotsMs, fingerprintStore = fingerprintStore),
@@ -364,11 +464,20 @@ private class TacitaImpl(
             .collect { emit(DownloadState.Downloading(referenceFile, it)) }
         }
         emit(DownloadState.CuttingAds)
-        val cutResult = adCutter.cutAds(file = outputFile, referenceFile = referenceFile, seedFingerprints = fingerprintStore != null)
+        val cutResult = adCutter.cutAds(
+          file = outputFile,
+          referenceFile = referenceFile,
+          seedFingerprints = fingerprintStore != null,
+          seedAcousticFingerprints = acousticFingerprintStore != null,
+        )
         if (fingerprintStore != null && cutResult is AdCutter.Result.AdsCut) {
           seedFingerprints(outputFile, fingerprintStore, cutResult.fingerprints)
         }
+        if (acousticFingerprintStore != null && cutResult is AdCutter.Result.AdsCut) {
+          seedAcousticFingerprints(outputFile, acousticFingerprintStore, feedId!!, cutResult.acousticFingerprints)
+        }
         adBoundaryCandidates = adBoundaryDetector.detect(outputFile, cutResult = cutResult, daiSlotsMs = daiSlotsMs, fingerprintStore = fingerprintStore)
+        if (acousticFingerprintStore != null) logAcousticMatches(outputFile, acousticFingerprintStore)
       }
       emit(DownloadState.Complete(adBoundaryCandidates))
     } finally {
@@ -422,6 +531,48 @@ private class TacitaImpl(
     fingerprintStoreFile.remove(fingerprintStore, id)
   }
 
+  override suspend fun confirmAcousticAd(
+    file: Path,
+    acousticFingerprintStore: Path,
+    feedId: String,
+    startMs: Long,
+    endMs: Long,
+  ): AcousticFingerprintInfo = withContext(Dispatchers.IO) {
+    require(feedId.isNotBlank()) { "feedId must not be blank" }
+    require(startMs >= 0) { "startMs must not be negative, was $startMs" }
+    require(endMs > startMs) { "endMs ($endMs) must be greater than startMs ($startMs)" }
+    val requestedSeconds = (endMs - startMs) / 1000.0
+    require(requestedSeconds >= AcousticFingerprinter.MIN_FINGERPRINT_SECONDS) {
+      "range is too short to fingerprint (${requestedSeconds}s < ${AcousticFingerprinter.MIN_FINGERPRINT_SECONDS}s)"
+    }
+    require(requestedSeconds <= AcousticFingerprinter.MAX_FINGERPRINT_SECONDS) {
+      "range is too long to fingerprint (${requestedSeconds}s > ${AcousticFingerprinter.MAX_FINGERPRINT_SECONDS}s)"
+    }
+    val fingerprint = fileSystem.openReadOnly(file).use { handle ->
+      acousticFingerprinter.extract(handle, fromMs = startMs, toMs = endMs)
+    } ?: throw IllegalArgumentException(
+      "range ${startMs}ms..${endMs}ms of $file cannot be acoustically fingerprinted: the decoded audio is " +
+        "outside the file, too short, or too spectrally uniform to match distinctively (e.g. silence or a held tone)",
+    )
+    acousticStoreFile.add(
+      acousticFingerprintStore,
+      listOf(StoredAcousticFingerprint(fingerprint, mapOf(feedId to AdFingerprintInfo.Provenance.HUMAN_CONFIRMED))),
+    )
+    log("Tacita: ${file.name}: human-confirmed acoustic ad fingerprint ${fingerprint.id.take(12)} (${fingerprint.durationMs / 1000}s, feed $feedId)")
+    // the merged store entry, so previously recorded attributions come back in the info
+    acousticStoreFile.read(acousticFingerprintStore).first { it.id == fingerprint.id }.info
+  }
+
+  override suspend fun acousticFingerprints(acousticFingerprintStore: Path): List<AcousticFingerprintInfo> =
+    withContext(Dispatchers.IO) {
+      acousticStoreFile.read(acousticFingerprintStore).map { it.info }
+    }
+
+  override suspend fun removeAcousticFingerprint(acousticFingerprintStore: Path, id: String): Boolean =
+    withContext(Dispatchers.IO) {
+      acousticStoreFile.remove(acousticFingerprintStore, id)
+    }
+
   // store maintenance never fails a download: it's an accuracy improvement, not a dependency
   private fun seedFingerprints(outputFile: Path, store: Path, fingerprints: List<StoredAdFingerprint>) {
     if (fingerprints.isEmpty()) return
@@ -444,6 +595,94 @@ private class TacitaImpl(
       log("Tacita: ${file.name}: pruned ${ids.size} fingerprint(s) that matched the verified-clean serving (content, not ads)")
     } catch (t: Throwable) {
       log("Tacita: ${file.name}: clean-serving fingerprint prune failed: ${t.message}")
+    }
+  }
+
+  private fun seedAcousticFingerprints(outputFile: Path, store: Path, feedId: String, fingerprints: List<AcousticFingerprint>) {
+    if (fingerprints.isEmpty()) return
+    try {
+      val added = acousticStoreFile.add(
+        store,
+        fingerprints.map { StoredAcousticFingerprint(it, mapOf(feedId to AdFingerprintInfo.Provenance.DIFF_PROVEN)) },
+      )
+      if (added > 0) log("Tacita: ${outputFile.name}: seeded $added diff-proven acoustic ad fingerprint(s) for feed $feedId")
+    } catch (t: Throwable) {
+      log("Tacita: ${outputFile.name}: acoustic fingerprint seeding failed: ${t.message}")
+    }
+  }
+
+  /**
+   * Log-only by design: acoustic matches against real feeds have not been ear-verified
+   * yet, so they must not influence consumers (no candidates, no confidence prior — see
+   * docs/ALGORITHM.md). The log line carries everything an ear check needs (span, landmark
+   * strength, attributions) plus the pass's wall time, feeding the owed mobile-cost
+   * measurement: this pass decodes the whole episode, CPU the byte layer never spent.
+   */
+  private fun logAcousticMatches(file: Path, store: Path) {
+    try {
+      val stored = acousticStoreFile.read(store)
+      if (stored.isEmpty()) return
+      val mark = TimeSource.Monotonic.markNow()
+      val matches = fileSystem.openReadOnly(file).use { handle ->
+        acousticFingerprinter.match(handle, stored.map { it.fingerprint })
+      }
+      val elapsedMs = mark.elapsedNow().inWholeMilliseconds
+      if (matches.isEmpty()) {
+        log("Tacita: ${file.name}: acoustic match pass found no recurrences of ${stored.size} stored creative(s) (${elapsedMs}ms)")
+        return
+      }
+      val byId = stored.associateBy { it.id }
+      matches.forEach { match ->
+        val attributions = byId[match.fingerprint.id]?.attributions.orEmpty()
+          .entries.joinToString { "${it.key}=${it.value}" }
+        log(
+          "Tacita: ${file.name}: acoustic fingerprint ${match.fingerprint.id.take(12)} ($attributions) matched " +
+            "${match.matchedSeconds.toInt()}s at ${match.fromMs}ms..${match.toMs}ms " +
+            "(${match.matchedLandmarks} landmarks) — log-only, pending real-feed ear verification",
+        )
+      }
+      log("Tacita: ${file.name}: acoustic match pass took ${elapsedMs}ms for ${stored.size} stored creative(s)")
+    } catch (t: Throwable) {
+      log("Tacita: ${file.name}: acoustic match pass failed: ${t.message}")
+    }
+  }
+
+  /**
+   * Feed-scoped by design (docs/ALGORITHM.md "Store scoping"): a verified-clean serving
+   * proves a matched creative is *this feed's* canonical content, so it revokes only this
+   * feed's attribution. Another feed's confirmation of the same audio — where it may be a
+   * genuinely injected ad — stands; the fingerprint itself is only dropped when no feed's
+   * evidence remains.
+   */
+  private fun pruneAcousticFingerprintsMatchingCleanServing(file: Path, store: Path, feedId: String) {
+    try {
+      val stored = acousticStoreFile.read(store)
+      if (stored.isEmpty()) return
+      val matches = fileSystem.openReadOnly(file).use { handle ->
+        acousticFingerprinter.match(handle, stored.map { it.fingerprint })
+      }
+      val ids = matches.map { it.fingerprint.id }.toSet()
+      var detached = 0
+      var dropped = 0
+      val remaining = stored.mapNotNull { entry ->
+        if (entry.id !in ids || feedId !in entry.attributions) return@mapNotNull entry
+        detached++
+        val rest = entry.attributions - feedId
+        if (rest.isEmpty()) {
+          dropped++
+          null
+        } else {
+          StoredAcousticFingerprint(entry.fingerprint, rest)
+        }
+      }
+      if (detached == 0) return
+      acousticStoreFile.write(store, remaining)
+      log(
+        "Tacita: ${file.name}: clean serving revoked feed $feedId's attribution on $detached acoustic " +
+          "fingerprint(s) ($dropped dropped entirely — no other feed's evidence remained)",
+      )
+    } catch (t: Throwable) {
+      log("Tacita: ${file.name}: clean-serving acoustic fingerprint prune failed: ${t.message}")
     }
   }
 }

@@ -2,6 +2,27 @@
 
 ### v0.0.5-SNAPSHOT - Unreleased
 
+- **Acoustic ad-fingerprint store** (opt-in): `Tacita.downloadPodcast` gains optional
+  `acousticFingerprintStore: Path` + `feedId: String` params. When provided (with
+  `cutAds`), tacita maintains a store of level-invariant acoustic fingerprints
+  (spectral-peak constellations over the decoded audio) that survive the per-episode
+  re-encoding and gain normalization Simplecast-class hosts apply — where byte matching
+  can never hit. Unlike the byte-layer `fingerprintStore` (kept per feed), one acoustic
+  store is designed to be shared globally across feeds: every stored creative carries
+  per-feed attributions (`feedId → provenance`), applied diff cuts auto-seed
+  `DIFF_PROVEN` fingerprints attributed to the downloading feed, and a verified-clean
+  serving revokes matching fingerprints for the observing feed only — never another
+  feed's confirmation (docs/ALGORITHM.md "Store scoping"). Matching is **log-only**:
+  recurrences are reported to the log callback (with match timing, feeding the owed
+  mobile-cost measurement) and emit no `AdBoundaryCandidate`s until real-feed matches
+  are ear-verified. Store failures never fail a download
+- **`Tacita.confirmAcousticAd(file, acousticFingerprintStore, feedId, startMs, endMs)`**
+  (new API): records a human-confirmed ad in the acoustic store as `HUMAN_CONFIRMED`
+  for that feed (merging with any existing attributions; never downgraded). Stationary
+  audio (silence, held tones) is rejected — its degenerate constellation would match
+  unrelated audio. Also new: `Tacita.acousticFingerprints` / `removeAcousticFingerprint`
+  (list / revoke across all feeds), and the public `AcousticFingerprintInfo` type
+
 - Internal: **acoustic fingerprinter core** (`AcousticFingerprinter` + `Fft`) — the
   level-invariant matching layer over decoded PCM that the mp3-decoder groundwork existed
   for: Hann STFT (1024/512 at 11.025kHz) → gain-invariant spectral-peak constellation →

@@ -16,16 +16,18 @@ Remaining:
 - **Graduate matches from candidates to cuts** — needs real-feed ear verification of
   matched spans first (playbook step 5); then HUMAN_CONFIRMED + full-digest matches
   could cut (the recorded cutting-authority constraint).
-- **Acoustic layer for Simplecast-class hosts** — level-invariant Wang-2003
-  constellation over decoded PCM. The mp3-decoder prerequisite landed 2026-07-19
-  (`Mp3Decoder`, a minimp3 port verified bit-identical to the C decoder — see
-  docs/ALGORITHM.md "Acoustic-layer groundwork"); still needed: common-code FFT,
-  peak-constellation extract/match, and the global-store design.
-  **Design requirement (2026-07-19): must support global/cross-feed stores** — that's
-  where cross-feed campaigns pay off — which means per-feed provenance on fingerprints
-  and feed-scoped clean-serving pruning (see docs/ALGORITHM.md "Store scoping").
+- ~~Acoustic layer for Simplecast-class hosts~~ (shipped 2026-07-19 in three steps:
+  `Mp3Decoder` minimp3 port, `AcousticFingerprinter` FFT + constellation core, and the
+  global acoustic store — `downloadPodcast(acousticFingerprintStore, feedId)` with
+  per-feed attributions, DIFF_PROVEN seeding, `confirmAcousticAd`, feed-scoped
+  clean-serving revocation; see docs/ALGORITHM.md "Shipped: the global acoustic store").
+  Matching is **log-only** pending real-feed ear verification (playbook step 5) — that
+  verification, plus the mobile cost measurement (timing now in the log lines) and the
+  per-feed negative-evidence design (suppressing a clean-verified feed's future
+  candidates without touching other feeds), are what's left before acoustic matches can
+  emit candidates with a confidence prior.
 - **Field measurements still owed**: Acast player-tier reuse, cross-week creative
-  recurrence (fingerprint shelf life).
+  recurrence (fingerprint shelf life), acoustic match-pass cost on mobile.
 
 ## 1. Run tests on non-JVM targets
 

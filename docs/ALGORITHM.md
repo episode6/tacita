@@ -483,8 +483,8 @@ Decoder behavior notes for the future fingerprinter: output is interleaved `[-1,
 (unclamped); a corrupt/garbage buffer never throws — the huffman fast path reads zeros where
 C would over-read stack garbage (deliberate divergence, same "no crash, nonsense output"
 contract); frames are skipped (0 samples, `frameBytes > 0`) until the bit reservoir primes,
-matching minimp3. The FFT + spectral-peak constellation landed same-day (next section);
-still open before the layer ships: the global-store provenance design above.
+matching minimp3. The FFT + spectral-peak constellation landed same-day (next section),
+as did the global-store provenance design ("Shipped: the global acoustic store").
 
 ### Acoustic fingerprinter core: FFT + spectral-peak constellation (2026-07-19, additive)
 
@@ -540,6 +540,50 @@ podcast servings must be ear-verified (playbook step 5) before `FINGERPRINT`-sou
 candidates from this layer get a confidence prior, and thresholds (20 landmarks, 1.5/12
 nats) are untested against real speech-over-music beds; (4) cost measurement on mobile —
 full-episode decode + STFT per match pass is new CPU the byte layer never spent.
+*(Items 1 and 2 landed same-day — next section. Items 3 and 4 remain open; the shipped
+integration is log-only and its log lines are the measurement instrument for 4.)*
+
+### Shipped: the global acoustic store (2026-07-19, log-only)
+
+The acoustic layer is wired into `downloadPodcast`, honoring the store-scoping design
+requirement above and the ear-check rule:
+
+- **Per-feed provenance on a shared store.** `downloadPodcast(acousticFingerprintStore=…,
+  feedId=…)` — the store is designed to be passed globally across every feed the consumer
+  follows, so each stored creative carries *attributions* (`feedId → provenance`) instead
+  of the byte layer's single provenance. `feedId` is any stable caller-chosen string (the
+  feed's canonical URL is the natural choice) and is mandatory with an acoustic store —
+  un-attributed evidence in a shared store can never be safely revoked. A new codec
+  (`tacita-afp` v1, `AcousticFingerprintStoreFile`) serializes the constellation
+  (hashes + anchor frames) plus attributions; merging unions attributions and upgrades
+  per-feed provenance (HUMAN_CONFIRMED never downgraded — same rule as the byte layer,
+  now applied per feed).
+- **Seeding**: applied diff cuts extract acoustic fingerprints from the removed ranges
+  (decoded from the pre-cut bytes, alongside the byte-layer extraction) and store them as
+  DIFF_PROVEN attributed to the downloading feed. `Tacita.confirmAcousticAd(file, store,
+  feedId, startMs, endMs)` records HUMAN_CONFIRMED confirmations; the degenerate
+  stationary-audio class (held tones — see the empirical lesson above) is rejected at
+  confirmation time rather than silently stored.
+- **Matching is log-only.** Recurrences of stored creatives in the output file are
+  reported to the log callback (creative id, attributions, matched span/landmarks, and
+  the pass's wall time — the instrument for the owed mobile-cost measurement) and emit
+  **no** `AdBoundaryCandidate`s and no confidence prior. Synthetic cross-encode
+  validation (jvmTest, jump3r re-encodes) is not real-feed validation; candidates wait
+  on ear-verified real-feed matches (playbook step 5).
+- **Clean-serving revocation is feed-scoped**, as the scoping design requires: a
+  verified-clean serving that matches a stored creative revokes *only the observing
+  feed's attribution*; the fingerprint is dropped only when no feed's evidence remains.
+  Pinned in tests: two feeds confirm one creative, feed A's clean serving leaves feed
+  B's confirmation standing.
+- Store failures never fail a download (same contract as the byte layer).
+
+**Open question recorded (2026-07-19):** after a feed's clean serving detaches its
+attribution, the creative still *log-matches* in that feed's future episodes off other
+feeds' attributions — harmless while log-only, but before candidates ship this needs a
+design: per-feed negative evidence ("feed X verified this clean") that suppresses that
+feed's candidates without touching other feeds, rather than mere attribution absence.
+Also still open: real-feed ear verification (blocks any confidence prior) and the
+threshold validation + cost measurement from the previous section.
 
 ## The aggressive candidate pass (2026-07-05, additive)
 
