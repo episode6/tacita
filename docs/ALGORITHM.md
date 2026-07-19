@@ -483,8 +483,63 @@ Decoder behavior notes for the future fingerprinter: output is interleaved `[-1,
 (unclamped); a corrupt/garbage buffer never throws — the huffman fast path reads zeros where
 C would over-read stack garbage (deliberate divergence, same "no crash, nonsense output"
 contract); frames are skipped (0 samples, `frameBytes > 0`) until the bit reservoir primes,
-matching minimp3. Still open before the layer itself: FFT + spectral-peak constellation +
-the global-store provenance design above.
+matching minimp3. The FFT + spectral-peak constellation landed same-day (next section);
+still open before the layer ships: the global-store provenance design above.
+
+### Acoustic fingerprinter core: FFT + spectral-peak constellation (2026-07-19, additive)
+
+`AcousticFingerprinter` (internal, common code, plus a small radix-2 `Fft`) is the
+level-invariant matching layer itself — extract/match only, deliberately **not wired into
+the download pipeline or any store** (that integration is blocked on the global-store
+provenance design above, and on the field validation below). Pipeline: streaming
+`Mp3Decoder` frames → mono downmix → linear resample to 11.025kHz → Hann STFT
+(1024-sample window, 512 hop ≈ 46ms frames, 0–5.5kHz band) → spectral peaks → landmark
+hashes (anchor bin, target bin, frame delta packed in 24 bits; fanout 6, ≤63 frames
+ahead) → matching by per-fingerprint time-offset consensus (a real occurrence stacks
+votes on one offset ±1 frame; coincidental hash collisions scatter). Floors mirror the
+byte layer: ≥5s to fingerprint, ≥5s matched span *and* ≥20 agreeing landmarks to report.
+Both passes stream — peak memory is bounded by landmark lists, never episode PCM (the
+2026-07-05 mobile OOM lesson).
+
+**Gain invariance is by construction, not calibration:** peak selection uses only
+frame-relative thresholds — a peak must strictly dominate its ±2-frame ±3-bin
+neighborhood, clear the frame's geometric-mean log-power by 1.5 nats, and sit within 12
+nats of the frame's strongest bin. A global gain change moves every quantity together.
+`AcousticFingerprinterTest` pins ≥95% identical landmarks between 1.0× and 0.5× gain
+(measured 98.6%; the shortfall from 100% is float rounding flipping borderline peaks —
+which is also why acoustic fingerprint ids, unlike byte-layer ids, are only stable for
+identical decoded PCM, not across encodes or platforms' libm differences).
+
+**Validation (2026-07-19, synthetic only so far):** jump3r (the pure-java LAME port that
+generated `stereo.mp3`) is now a jvmTest dependency used as an in-test encoder, so the
+tests re-create the exact serving shapes the layer exists for. Pinned green: a creative
+fingerprinted from a 128kbps 44.1kHz encode is found (with ~±1s edges) in an episode that
+embeds the same audio re-encoded at 64kbps 22.05kHz at 0.7× gain — the Simplecast-class
+per-episode-transcode case byte matching can never touch; the same across a byte-level
+stitch of three independent encoder runs (the Audioboom shape); both occurrences of one
+creative rotated through two slots; and no match in a creative-free episode.
+
+**Empirical lesson — stationary audio is degenerate (and the committed fixtures proved
+it):** a first test matched `single.mp3` against a stitch of the other committed fixtures
+and got a *stronger* match on `content-a.mp3` than on the actual embedded copy — those
+fixtures are held test tones, and a held tone collapses the constellation to a handful of
+distinct hashes that align at many offsets against any similar tone. Two guards came out
+of this: the dynamic-range bound above (a tone's quantization-noise floor otherwise
+sneaks spurious "peaks" past the geometric-mean threshold, mp3-encoded silence measured
+~-52dB power below the tone bin) and an extraction floor of ≥48 *distinct* hashes (a 10s
+1kHz tone yields thousands of landmarks but only ~a dozen distinct hashes; the synthetic
+speech-shaped test audio yields hundreds). Consequence for consumers: jingles/sweepers
+that are pure sustained tones cannot be acoustically fingerprinted — by design, since
+their matches would be meaningless.
+
+**Open before this layer ships in `downloadPodcast`:** (1) the global-store provenance
+design (per-feed attribution + feed-scoped pruning, required 2026-07-19); (2) fingerprint
+serialization (the store codec only handles byte-layer entries); (3) the ear-check rule
+stands — synthetic-encode validation is *not* real-feed validation; matched spans on real
+podcast servings must be ear-verified (playbook step 5) before `FINGERPRINT`-sourced
+candidates from this layer get a confidence prior, and thresholds (20 landmarks, 1.5/12
+nats) are untested against real speech-over-music beds; (4) cost measurement on mobile —
+full-episode decode + STFT per match pass is new CPU the byte layer never spent.
 
 ## The aggressive candidate pass (2026-07-05, additive)
 
