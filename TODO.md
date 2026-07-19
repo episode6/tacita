@@ -17,7 +17,10 @@ Remaining:
   matched spans first (playbook step 5); then HUMAN_CONFIRMED + full-digest matches
   could cut (the recorded cutting-authority constraint).
 - **Acoustic layer for Simplecast-class hosts** — level-invariant Wang-2003
-  constellation over decoded PCM; needs a common-code mp3 decoder (minimp3 is CC0).
+  constellation over decoded PCM. The mp3-decoder prerequisite landed 2026-07-19
+  (`Mp3Decoder`, a minimp3 port verified bit-identical to the C decoder — see
+  docs/ALGORITHM.md "Acoustic-layer groundwork"); still needed: common-code FFT,
+  peak-constellation extract/match, and the global-store design.
   **Design requirement (2026-07-19): must support global/cross-feed stores** — that's
   where cross-feed campaigns pay off — which means per-feed provenance on fingerprints
   and feed-scoped clean-serving pruning (see docs/ALGORITHM.md "Store scoping").

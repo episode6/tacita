@@ -2,6 +2,13 @@
 
 ### v0.0.4-SNAPSHOT - Unreleased
 
+- Internal: **common-code mp3 decoder** (`Mp3Decoder` + `Mp3Tables`) — a pure-Kotlin port
+  of minimp3 (CC0; scalar path, float output, Layer III only) that runs on every KMP
+  target, verified bit-identical to the C decoder across MPEG-2 mono and MPEG-1
+  joint-stereo streams (`Mp3DecoderTest` pins the decoded-PCM digests). Groundwork for the
+  acoustic (level-invariant) ad-fingerprint layer — no public API or behavior change.
+  New jvmTest-only dependency: jlayer (independent reference decoder); new fixture:
+  `stereo.mp3`; new script: `scripts/port-minimp3-tables.py` (mechanical table extraction)
 - **Ad-creative fingerprint store** (opt-in): `Tacita.downloadPodcast` gains an optional
   `fingerprintStore: Path` param. When provided (with `cutAds`), tacita maintains a store of
   known ad-creative fingerprints at that path: every applied diff cut auto-seeds a

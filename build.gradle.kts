@@ -33,6 +33,8 @@ kotlin {
       dependencies {
         implementation(libs.ktor.client.mock)
         implementation(libs.assertk.jvm)
+        // jlayer: independent reference decoder for Mp3Decoder verification
+        implementation(libs.jlayer.core)
       }
     }
   }
