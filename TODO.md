@@ -18,6 +18,9 @@ Remaining:
   could cut (the recorded cutting-authority constraint).
 - **Acoustic layer for Simplecast-class hosts** — level-invariant Wang-2003
   constellation over decoded PCM; needs a common-code mp3 decoder (minimp3 is CC0).
+  **Design requirement (2026-07-19): must support global/cross-feed stores** — that's
+  where cross-feed campaigns pay off — which means per-feed provenance on fingerprints
+  and feed-scoped clean-serving pruning (see docs/ALGORITHM.md "Store scoping").
 - **Field measurements still owed**: Acast player-tier reuse, cross-week creative
   recurrence (fingerprint shelf life).
 

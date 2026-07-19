@@ -424,6 +424,39 @@ matched spans (playbook step 5). Still open from the research: Acast player-tier
 measurement, cross-week creative recurrence (the fill-rotation shelf life of a stored
 fingerprint), and the acoustic layer for Simplecast-class hosts.
 
+### Store scoping (2026-07-19 follow-up): per-feed for the byte layer, global for the acoustic layer
+
+Questioned same-day (ghackett): the same ad campaigns do run across many feeds, so why
+scope stores per-feed? Recording the reasoning so the decision doesn't fossilize as
+unexamined dogma:
+
+- **The prior-art argument mostly doesn't apply to us.** The single-show scoping in the
+  surveyed practitioner tools exists because they discover ads *by repetition* — there,
+  cross-show matching flags shared network assets (intros, jingles) as ads. Tacita's
+  store is provenance-gated (diff-proven or ear-confirmed), not repetition-based, so a
+  stored creative matched in another feed would usually be a correct hit. Don't
+  over-weight that precedent.
+- **What actually keeps the byte layer per-feed:** (1) cross-feed *byte* identity is
+  unverified and structurally unlikely — it requires one host serving the identical
+  encode to multiple shows; Simplecast's per-episode normalization rules it out there,
+  cross-host is impossible by construction, and same-host sharing (e.g. two Audioboom
+  128k shows) is unmeasured. A probe was considered and deliberately deferred
+  (2026-07-19): the two Audioboom feeds in hand (Nextlander, PSA) target disjoint
+  audiences and are unlikely to share campaigns, so a null result would prove nothing.
+  (2) **The clean-serving prune is only sound per-feed**: with a shared store, a
+  creative baked into feed B's publisher upload (e.g. a network cross-promo) would
+  prune a fingerprint that is a real, ear-confirmed ad in feed A — one feed's canonical
+  content deleting another feed's confirmations.
+- Scoping is the *consumer's* choice mechanically — the store is just a path the caller
+  passes — so this is a documented recommendation, not an enforced constraint.
+- **Design requirement (ghackett, 2026-07-19): the acoustic layer MUST support global /
+  cross-feed stores.** Level-invariant matching is exactly where cross-feed ads pay off
+  (same campaign audio across shows and hosts, different bytes), so its design must
+  solve what per-feed scoping currently sidesteps: per-feed provenance/attribution on
+  each fingerprint, and feed-scoped clean-serving pruning (a clean serving revokes a
+  fingerprint only for the feed that observed it — or downgrades it — never deletes
+  another feed's confirmation outright).
+
 ## The aggressive candidate pass (2026-07-05, additive)
 
 `AdBoundaryDetector` is a read-only last pass over the final output file that emits
