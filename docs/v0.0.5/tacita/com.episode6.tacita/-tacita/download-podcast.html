@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html class="no-js" lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>downloadPodcast</title>
+    <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg">
+        <script>var pathToRoot = "../../../";</script>
+    <script>document.documentElement.classList.replace("no-js", "js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+      if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      } else {
+        const savedDarkMode = JSON.parse(storage)
+        if (savedDarkMode === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      }
+    </script>
+<script type="text/javascript" src="../../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../../styles/style.css" rel="Stylesheet">
+<link href="../../../styles/main.css" rel="Stylesheet">
+<link href="../../../styles/prism.css" rel="Stylesheet">
+<link href="../../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../../scripts/safe-local-storage_blocking.js"></script>
+<script type="text/javascript" src="../../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../../ui-kit/ui-kit.min.js" defer="defer"></script>
+</head>
+<body>
+<div class="root">
+    <header class="navigation theme-dark" id="navigation-wrapper" role="banner">
+            <a class="library-name--link" href="../../../index.html" tabindex="1">
+                    tacita
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+0.0.5        </div>
+        <div class="navigation-controls">
+        <ul class="filter-section filter-section_loading" id="filter-section" aria-label="Target filter">
+                <button class="platform-tag platform-selector common-like" data-active="" aria-pressed="true"
+                        data-filter=":/commonMain">common</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox" aria-label="Target filter">
+                    <div class="dropdown--header"><span>Target filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close target filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option common-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id=":/commonMain"
+                                       data-filter=":/commonMain"/>
+                                <span class="checkbox--icon"></span>
+                                common
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </ul>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </header>
+    <div id="container">
+        <nav id="leftColumn" class="sidebar" data-item-type="SECTION" data-item-config='{"defaultSize": 280, "minSize": 200, "maxSize": 400}'>
+            <a class="toc--skip-link" href="#main">Skip to content</a>
+            <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                    data-role="dropdown-listbox" aria-label="Table of contents">
+                    <div class="dropdown--header">
+                            <span>
+                                    tacita
+                            </span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                    <div class="sidebar--inner" id="sideMenu"></div>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </nav>
+        <div id="resizer" class="resizer" data-item-type="BAR"></div>
+        <div id="main" data-item-type="SECTION" role="main">
+<div class="main-content" data-page-type="member" id="content" pageIds="tacita::com.episode6.tacita/Tacita/downloadPodcast/#kotlin.String#okio.Path#okio.Path#kotlin.Boolean#kotlin.Boolean#kotlin.Long?#kotlin.Long?#okio.Path?#okio.Path?#kotlin.String?/PointingToDeclaration//1558683979">
+  <div class="breadcrumbs"><a href="../../../index.html">tacita</a><span class="delimiter">/</span><a href="../index.html">com.episode6.tacita</a><span class="delimiter">/</span><a href="index.html">Tacita</a><span class="delimiter">/</span><span class="current">downloadPodcast</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span>download</span><wbr></wbr><span><span>Podcast</span></span></h1>
+  </div>
+  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":/commonMain"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">fun </span><a href="download-podcast.html"><span class="token function">downloadPodcast</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">url<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter ">outputFile<span class="token operator">: </span><span data-unresolved-link="okio/Path///PointingToDeclaration/">Path</span><span class="token punctuation">, </span></span><span class="parameter ">referenceFile<span class="token operator">: </span><span data-unresolved-link="okio/Path///PointingToDeclaration/">Path</span><span class="token punctuation">, </span></span><span class="parameter ">overwrite<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token punctuation">, </span></span><span class="parameter ">cutAds<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token punctuation">, </span></span><span class="parameter ">declaredEnclosureBytes<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">expectedDurationSeconds<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">fingerprintStore<span class="token operator">: </span><span data-unresolved-link="okio/Path///PointingToDeclaration/">Path</span><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">acousticFingerprintStore<span class="token operator">: </span><span data-unresolved-link="okio/Path///PointingToDeclaration/">Path</span><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">feedId<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span><span class="token operator"> = </span>null</span></span><span class="token punctuation">)</span><span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines.flow/Flow///PointingToDeclaration/">Flow</span><span class="token operator">&lt;</span><a href="../-download-state/index.html">DownloadState</a><span class="token operator">&gt;</span></div><p class="paragraph">Downloads the podcast episode at <a href="download-podcast.html">url</a> to <a href="download-podcast.html">outputFile</a>, optionally cutting dynamically-injected ads out of it. Does nothing until collected.</p><p class="paragraph">When the feed's declared episode size (<a href="download-podcast.html">declaredEnclosureBytes</a>, the <code class="lang-kotlin">enclosure length</code> attribute) and/or duration (<a href="download-podcast.html">expectedDurationSeconds</a>, <code class="lang-kotlin">itunes:duration</code>) are provided and <a href="download-podcast.html">cutAds</a> is true, tacita first probes for a serving that provably contains no injected ads — the pinned-tier serving itself, a static <code class="lang-kotlin">fallback_url</code> leaked in the host's redirect chain, or a bot-tier serving — and downloads that copy directly, skipping the diff. Some hosts inject sticky fill on every tier, which blinds a same-session reference; a verified-clean serving is the only reliable escape, so callers that have feed metadata should pass it.</p><p class="paragraph">Otherwise ads are identified by diffing against a second copy of the same episode (kept at <a href="download-podcast.html">referenceFile</a>): dynamically injected fill varies per request while everything the episode always ships with doesn't, so byte runs unique to <a href="download-podcast.html">outputFile</a> are the injected ads. The splice is lossless (no re-encoding) and the failure mode is always keeping too much, never cutting material that belongs to the episode.</p><p class="paragraph">Back-to-back requests tend to receive identical fill, so a copy from an earlier session makes a far better reference than a fresh one. To that end: when <a href="download-podcast.html">overwrite</a>-ing an existing <a href="download-podcast.html">outputFile</a> it is promoted to become the reference, an existing <a href="download-podcast.html">referenceFile</a> is reused instead of re-downloaded, and reference files are kept on disk for future runs.</p><p class="paragraph">When <a href="download-podcast.html">cutAds</a> is true, the terminal <a href="../-download-state/-complete/index.html">DownloadState.Complete</a> also carries <a href="../-ad-boundary-candidate/index.html">AdBoundaryCandidate</a>s — aggressive, unverified guesses at ad boundaries remaining in the output file, gathered by a read-only pass that never modifies the file (and never fails the download). See <a href="../-ad-boundary-candidate/index.html">AdBoundaryCandidate</a> for the consumer contract.</p><p class="paragraph">When <a href="download-podcast.html">fingerprintStore</a> is provided (and <a href="download-podcast.html">cutAds</a> is true), tacita additionally maintains a store of known ad-creative fingerprints at that path (creating it on first use): every applied diff cut auto-seeds a <a href="../-ad-fingerprint-info/-provenance/-d-i-f-f_-p-r-o-v-e-n/index.html">AdFingerprintInfo.Provenance.DIFF_PROVEN</a> fingerprint of the removed bytes, recurrences of stored creatives still present in the output file surface as <a href="../-ad-boundary-candidate/-source/-f-i-n-g-e-r-p-r-i-n-t/index.html">AdBoundaryCandidate.Source.FINGERPRINT</a> candidates (matches never cut the file), and fingerprints that match a verified-clean serving are pruned — a stored &quot;creative&quot; that appears in the publisher's own upload is show content, not an ad. Keep one store per feed: creatives are targeted per show, and per-show scoping avoids false positives from assets shared across a network's shows. Store failures are logged and never fail the download.</p><p class="paragraph">When <a href="download-podcast.html">acousticFingerprintStore</a> is provided (with <a href="download-podcast.html">cutAds</a>), tacita additionally maintains a store of <i>acoustic</i> ad-creative fingerprints — level-invariant spectral-peak constellations over the decoded audio, which survive the per-episode re-encoding and gain normalization some hosts apply (where byte matching can never hit). Unlike <a href="download-podcast.html">fingerprintStore</a>, one acoustic store is designed to be shared globally across every feed the consumer follows, so it also requires a <a href="download-podcast.html">feedId</a> identifying this download's feed (any stable string — e.g. the feed's canonical URL): applied diff cuts auto-seed acoustic fingerprints attributed to <a href="download-podcast.html">feedId</a>, and a verified-clean serving revokes matching fingerprints <i>for </i><a href="download-podcast.html"><i>feedId</i></a><i> only</i> — a creative baked into one show's upload must not delete another feed's confirmation of the same audio (see <a href="../-acoustic-fingerprint-info/attributions.html">AcousticFingerprintInfo.attributions</a>). Recurrences of stored creatives in the output file are currently <strong>log-only</strong>: they are reported to the instance's log callback (with match timing) and emit no <a href="../-ad-boundary-candidate/index.html">AdBoundaryCandidate</a>s — acoustic matches have not yet been ear-verified against real feeds, the bar every signal must clear before it may influence consumers (docs/ALGORITHM.md). Store failures are logged and never fail the download.</p><p class="paragraph">The flow throws <a href="../-file-already-exists-exception/index.html">FileAlreadyExistsException</a> if <a href="download-podcast.html">outputFile</a> exists and <a href="download-podcast.html">overwrite</a> is false, and <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-illegal-argument-exception/index.html">IllegalArgumentException</a> if <a href="download-podcast.html">acousticFingerprintStore</a> is provided without a <a href="download-podcast.html">feedId</a>.</p></div></div>
+</div>
+    <div class="footer">
+        <div class="footer--container">
+            <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+            <div class="footer--content">
+                <div>
+                    <span>Generated by </span>
+                    <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                        Dokka
+                    </a>
+                    <div>© 2026 Copyright</div>
+                </div>
+            </div>
+        </div>
+    </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
