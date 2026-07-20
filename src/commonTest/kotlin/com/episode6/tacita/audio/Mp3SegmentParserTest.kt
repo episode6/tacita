@@ -6,13 +6,13 @@ import assertk.assertions.isCloseTo
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import assertk.assertions.isGreaterThan
-import okio.FileSystem
-import okio.Path.Companion.toOkioPath
-import java.io.File
+import com.episode6.tacita.systemFileSystem
+import com.episode6.tacita.testTempFile
+import okio.use
 import kotlin.test.Test
 
 /**
- * Fixtures (see src/test/resources/audio):
+ * Fixtures (see src/commonTest/resources/audio):
  * - stitched.mp3: three independently-encoded mp3s concatenated — 6s tone (with ID3v2
  *   header), 2s tone, 8s tone — mimicking dynamic ad insertion.
  * - single.mp3: one continuous 10s encode (with ID3v2 header).
@@ -79,11 +79,8 @@ class Mp3SegmentParserTest {
   }
 
   private fun scanViaFile(data: ByteArray, windowBytes: Int = 1 shl 12): Mp3SegmentParser.Scan {
-    val file = File.createTempFile("parser-test", ".mp3").apply {
-      deleteOnExit()
-      writeBytes(data)
-    }
-    return FileSystem.SYSTEM.openReadOnly(file.toOkioPath()).use { handle ->
+    val file = testTempFile("parser-test", data)
+    return systemFileSystem.openReadOnly(file).use { handle ->
       parser.scan(handle, windowBytes = windowBytes)
     }
   }
@@ -174,8 +171,3 @@ private const val DURATION_TOLERANCE_SECONDS = 0.5
 // 2-bit version field values from the mp3 frame header
 private const val MPEG2 = 2
 private const val MPEG2_5 = 0
-
-internal fun fixture(name: String): ByteArray =
-  checkNotNull(Mp3SegmentParserTest::class.java.getResourceAsStream("/audio/$name")) {
-    "missing test fixture /audio/$name"
-  }.readBytes()

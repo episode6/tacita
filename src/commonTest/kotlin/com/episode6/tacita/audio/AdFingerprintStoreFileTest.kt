@@ -9,18 +9,18 @@ import assertk.assertions.isFalse
 import assertk.assertions.isInstanceOf
 import assertk.assertions.isTrue
 import com.episode6.tacita.AdFingerprintInfo
+import com.episode6.tacita.testTempDir
+import com.episode6.tacita.writeBytes
 import okio.IOException
 import okio.Path
-import okio.Path.Companion.toOkioPath
-import java.nio.file.Files
 import kotlin.test.Test
 
 class AdFingerprintStoreFileTest {
 
   private val fingerprinter = AdFingerprinter()
   private val store = AdFingerprintStoreFile()
-  private val dir = Files.createTempDirectory("fp-store-test").toFile().apply { deleteOnExit() }
-  private val path: Path = dir.resolve("ads.tacita-fp").toOkioPath()
+  private val dir = testTempDir("fp-store-test")
+  private val path: Path = dir / "ads.tacita-fp"
 
   private val adBreak = fixture("ad-a.mp3") + fixture("ad-b.mp3") + fixture("ad-a.mp3") // ~7.3s
   private val otherBreak = fixture("ad-b.mp3") + fixture("ad-a.mp3") + fixture("ad-b.mp3") // ~8.3s
@@ -81,7 +81,7 @@ class AdFingerprintStoreFileTest {
   }
 
   @Test fun `a corrupt store throws instead of returning garbage`() {
-    dir.resolve("ads.tacita-fp").writeBytes("not a fingerprint store at all".toByteArray())
+    path.writeBytes("not a fingerprint store at all".encodeToByteArray())
 
     assertFailure { store.read(path) }.isInstanceOf(IOException::class)
   }

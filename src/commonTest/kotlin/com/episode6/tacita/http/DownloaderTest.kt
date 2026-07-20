@@ -9,6 +9,9 @@ import assertk.assertions.isGreaterThan
 import assertk.assertions.isInstanceOf
 import assertk.assertions.isNull
 import assertk.assertions.messageContains
+import com.episode6.tacita.exists
+import com.episode6.tacita.readBytes
+import com.episode6.tacita.testTempDir
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -20,19 +23,18 @@ import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.close
 import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import okio.IOException
-import okio.Path.Companion.toOkioPath
-import java.nio.file.Files
+import okio.Path
 import kotlin.test.Test
 
 class DownloaderTest {
 
-  private val dir = Files.createTempDirectory("downloader-test").toFile().apply { deleteOnExit() }
-  private val outputFile = dir.resolve("file.bin")
+  private val dir = testTempDir("downloader-test")
+  private val outputFile = dir / "file.bin"
   private val payload = ByteArray(50_000) { it.toByte() } // several read chunks worth
 
-  @Test fun `throws on non-2xx status and leaves no file behind`() {
+  @Test fun `throws on non-2xx status and leaves no file behind`() = runTest {
     val engine = MockEngine { respond("gone", HttpStatusCode.NotFound) }
 
     assertFailure { download(engine) }
@@ -42,7 +44,7 @@ class DownloaderTest {
     assertThat(outputFile.exists(), name = "error body saved as a download").isFalse()
   }
 
-  @Test fun `mid-download failure deletes the partial file`() {
+  @Test fun `mid-download failure deletes the partial file`() = runTest {
     val engine = MockEngine {
       val channel = ByteChannel(autoFlush = true)
       channel.writeFully(payload, 0, 1_000)
@@ -50,12 +52,14 @@ class DownloaderTest {
       respond(channel, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
     }
 
-    assertFailure { download(engine) }.isInstanceOf(IOException::class)
+    // the engine's failure is rethrown as-is and its type is platform-specific
+    // (jvm: IOException, native: ktor's ClosedByteChannelException)
+    assertFailure { download(engine) }
 
     assertThat(outputFile.exists(), name = "partial download left on disk").isFalse()
   }
 
-  @Test fun `reports granular progress when content-length is known`() {
+  @Test fun `reports granular progress when content-length is known`() = runTest {
     val engine = MockEngine {
       respond(payload, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
     }
@@ -69,7 +73,7 @@ class DownloaderTest {
     assertThat(outputFile.readBytes()).isEqualTo(payload)
   }
 
-  @Test fun `reports only start and end progress when content-length is missing`() {
+  @Test fun `reports only start and end progress when content-length is missing`() = runTest {
     val engine = MockEngine { respond(ByteReadChannel(payload), HttpStatusCode.OK) }
 
     val progress = download(engine)
@@ -78,8 +82,8 @@ class DownloaderTest {
     assertThat(outputFile.readBytes()).isEqualTo(payload)
   }
 
-  @Test fun `creates missing parent directories`() {
-    val nested = dir.resolve("shows/some-show/episode.bin")
+  @Test fun `creates missing parent directories`() = runTest {
+    val nested = dir / "shows" / "some-show" / "episode.bin"
     val engine = MockEngine { respond(payload, HttpStatusCode.OK) }
 
     download(engine, nested)
@@ -87,7 +91,7 @@ class DownloaderTest {
     assertThat(nested.readBytes()).isEqualTo(payload)
   }
 
-  @Test fun `sends the pinned user-agent`() {
+  @Test fun `sends the pinned user-agent`() = runTest {
     val engine = MockEngine { respond(payload, HttpStatusCode.OK) }
 
     download(engine)
@@ -95,19 +99,17 @@ class DownloaderTest {
     assertThat(engine.requestHistory.single().headers[HttpHeaders.UserAgent]).isEqualTo("okhttp/4.12.0")
   }
 
-  @Test fun `downloadFile can override the user-agent per call`() {
+  @Test fun `downloadFile can override the user-agent per call`() = runTest {
     val engine = MockEngine { respond(payload, HttpStatusCode.OK) }
 
-    runBlocking {
-      Downloader(httpClient = HttpClient(engine))
-        .downloadFile(url = URL, outputFile = outputFile.toOkioPath(), overwrite = false, userAgent = "curl/8.5.0")
-        .toList()
-    }
+    Downloader(httpClient = HttpClient(engine))
+      .downloadFile(url = URL, outputFile = outputFile, overwrite = false, userAgent = "curl/8.5.0")
+      .toList()
 
     assertThat(engine.requestHistory.single().headers[HttpHeaders.UserAgent]).isEqualTo("curl/8.5.0")
   }
 
-  @Test fun `probe requests a single byte and parses the total from a 206 content-range`() {
+  @Test fun `probe requests a single byte and parses the total from a 206 content-range`() = runTest {
     val engine = MockEngine {
       respond(
         content = ByteArray(1),
@@ -116,13 +118,13 @@ class DownloaderTest {
       )
     }
 
-    val result = runBlocking { Downloader(httpClient = HttpClient(engine)).probe(URL) }
+    val result = Downloader(httpClient = HttpClient(engine)).probe(URL)
 
     assertThat(engine.requestHistory.single().headers[HttpHeaders.Range]).isEqualTo("bytes=0-0")
     assertThat(result?.contentLength).isEqualTo(66_843_410L)
   }
 
-  @Test fun `probe reports the content-length and final url across redirects`() {
+  @Test fun `probe reports the content-length and final url across redirects`() = runTest {
     val redirectTarget = "https://cdn.example.com/variant/abc.mp3?media_type=dynamic"
     val engine = MockEngine { request ->
       when (request.url.host) {
@@ -135,7 +137,7 @@ class DownloaderTest {
       }
     }
 
-    val result = runBlocking { Downloader(httpClient = HttpClient(engine)).probe(URL, userAgent = "curl/8.5.0") }
+    val result = Downloader(httpClient = HttpClient(engine)).probe(URL, userAgent = "curl/8.5.0")
 
     assertThat(result?.finalUrl).isEqualTo(redirectTarget)
     assertThat(result?.contentLength).isEqualTo(payload.size.toLong())
@@ -144,19 +146,18 @@ class DownloaderTest {
     }
   }
 
-  @Test fun `probe returns null on a failure status`() {
+  @Test fun `probe returns null on a failure status`() = runTest {
     val engine = MockEngine { respond("gone", HttpStatusCode.NotFound) }
 
-    val result = runBlocking { Downloader(httpClient = HttpClient(engine)).probe(URL) }
+    val result = Downloader(httpClient = HttpClient(engine)).probe(URL)
 
     assertThat(result).isNull()
   }
 
-  private fun download(engine: MockEngine, file: java.io.File = outputFile): List<Float> = runBlocking {
+  private suspend fun download(engine: MockEngine, file: Path = outputFile): List<Float> =
     Downloader(httpClient = HttpClient(engine))
-      .downloadFile(url = URL, outputFile = file.toOkioPath(), overwrite = false)
+      .downloadFile(url = URL, outputFile = file, overwrite = false)
       .toList()
-  }
 }
 
 private const val URL = "https://example.com/file.bin"

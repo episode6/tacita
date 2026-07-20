@@ -14,7 +14,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.encodeURLParameter
 import io.ktor.http.headersOf
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 
 /**
@@ -25,7 +25,7 @@ class CleanSourceResolverTest {
 
   private val logLines = mutableListOf<String>()
 
-  @Test fun `returns null without probing when the feed declares no expectations`() {
+  @Test fun `returns null without probing when the feed declares no expectations`() = runTest {
     val engine = MockEngine { respond("should not be called", HttpStatusCode.OK) }
 
     val result = resolve(engine, declaredBytes = null, durationSeconds = null)
@@ -35,7 +35,7 @@ class CleanSourceResolverTest {
     assertThat(engine.requestHistory.size).isZero()
   }
 
-  @Test fun `accepts the pinned-tier serving when it matches the declared enclosure bytes`() {
+  @Test fun `accepts the pinned-tier serving when it matches the declared enclosure bytes`() = runTest {
     val engine = MockEngine { serve(CLEAN_BYTES) }
 
     val result = resolve(engine, declaredBytes = CLEAN_BYTES)
@@ -43,7 +43,7 @@ class CleanSourceResolverTest {
     assertThat(result.cleanSource).isEqualTo(CleanSourceResolver.CleanSource(EPISODE_URL, userAgent = null, contentLength = CLEAN_BYTES))
   }
 
-  @Test fun `accepts the pinned-tier serving when it matches the expected duration at a standard bitrate`() {
+  @Test fun `accepts the pinned-tier serving when it matches the expected duration at a standard bitrate`() = runTest {
     val engine = MockEngine { serve(CLEAN_BYTES) }
 
     val result = resolve(engine, durationSeconds = DURATION_SECONDS)
@@ -51,7 +51,7 @@ class CleanSourceResolverTest {
     assertThat(result.cleanSource?.contentLength).isEqualTo(CLEAN_BYTES)
   }
 
-  @Test fun `rejects a filled serving via the duration check and returns null when nothing else validates`() {
+  @Test fun `rejects a filled serving via the duration check and returns null when nothing else validates`() = runTest {
     val engine = MockEngine { serve(FILLED_BYTES) } // every tier serves fill
 
     val result = resolve(engine, durationSeconds = DURATION_SECONDS)
@@ -59,7 +59,7 @@ class CleanSourceResolverTest {
     assertThat(result.cleanSource).isNull()
   }
 
-  @Test fun `rejects a truncated serving via the duration check`() {
+  @Test fun `rejects a truncated serving via the duration check`() = runTest {
     val engine = MockEngine { serve(CLEAN_BYTES - 2_000_000) }
 
     val result = resolve(engine, durationSeconds = DURATION_SECONDS)
@@ -67,7 +67,7 @@ class CleanSourceResolverTest {
     assertThat(result.cleanSource).isNull()
   }
 
-  @Test fun `uses the static fallback_url leaked in the resolved redirect chain`() {
+  @Test fun `uses the static fallback_url leaked in the resolved redirect chain`() = runTest {
     val engine = redirectEngine(VARIANT_URL)
 
     val result = resolve(engine, durationSeconds = DURATION_SECONDS)
@@ -78,7 +78,7 @@ class CleanSourceResolverTest {
     )
   }
 
-  @Test fun `reports leaked dai slot positions alongside the resolved source`() {
+  @Test fun `reports leaked dai slot positions alongside the resolved source`() = runTest {
     val engine = redirectEngine(VARIANT_URL)
 
     val result = resolve(engine, durationSeconds = DURATION_SECONDS)
@@ -86,7 +86,7 @@ class CleanSourceResolverTest {
     assertThat(result.daiSlotsMs).isEqualTo(listOf(1_478_560L, 2_682_539L))
   }
 
-  @Test fun `collapses audioboom's duplicated slot pairs to distinct sorted positions`() {
+  @Test fun `collapses audioboom's duplicated slot pairs to distinct sorted positions`() = runTest {
     // observed in the field: m=[start,end,start,end] with start==end per slot
     val engine = redirectEngine(variantUrl(m = "[2682539,2682539,1478560,1478560]"))
 
@@ -95,7 +95,7 @@ class CleanSourceResolverTest {
     assertThat(result.daiSlotsMs).isEqualTo(listOf(1_478_560L, 2_682_539L))
   }
 
-  @Test fun `malformed dai metadata yields no slots instead of failing resolution`() {
+  @Test fun `malformed dai metadata yields no slots instead of failing resolution`() = runTest {
     val engine = redirectEngine(variantUrl(m = "garbage"))
 
     val result = resolve(engine, durationSeconds = DURATION_SECONDS)
@@ -104,7 +104,7 @@ class CleanSourceResolverTest {
     assertThat(result.daiSlotsMs).isEmpty()
   }
 
-  @Test fun `dai slots are reported even when nothing validates and the diff must run`() {
+  @Test fun `dai slots are reported even when nothing validates and the diff must run`() = runTest {
     val engine = MockEngine { request ->
       when {
         request.url.host == "example.com" -> respond(
@@ -122,7 +122,7 @@ class CleanSourceResolverTest {
     assertThat(result.daiSlotsMs).isEqualTo(listOf(1_478_560L, 2_682_539L))
   }
 
-  @Test fun `falls back to bot-tier user-agents when the pinned tier is filled`() {
+  @Test fun `falls back to bot-tier user-agents when the pinned tier is filled`() = runTest {
     val engine = MockEngine { request ->
       when (request.headers[HttpHeaders.UserAgent]) {
         "curl/8.5.0" -> serve(CLEAN_BYTES)
@@ -135,7 +135,7 @@ class CleanSourceResolverTest {
     assertThat(result.cleanSource).isEqualTo(CleanSourceResolver.CleanSource(EPISODE_URL, userAgent = "curl/8.5.0", contentLength = CLEAN_BYTES))
   }
 
-  @Test fun `a probe failure skips that candidate instead of failing resolution`() {
+  @Test fun `a probe failure skips that candidate instead of failing resolution`() = runTest {
     val engine = MockEngine { request ->
       when (request.headers[HttpHeaders.UserAgent]) {
         "okhttp/4.12.0" -> respond("boom", HttpStatusCode.InternalServerError)
@@ -168,13 +168,11 @@ class CleanSourceResolverTest {
     }
   }
 
-  private fun resolve(engine: MockEngine, declaredBytes: Long? = null, durationSeconds: Long? = null): CleanSourceResolver.Resolution =
-    runBlocking {
-      CleanSourceResolver(
-        downloader = Downloader(httpClient = HttpClient(engine)),
-        log = { logLines += it },
-      ).resolve(EPISODE_URL, declaredEnclosureBytes = declaredBytes, expectedDurationSeconds = durationSeconds)
-    }
+  private suspend fun resolve(engine: MockEngine, declaredBytes: Long? = null, durationSeconds: Long? = null): CleanSourceResolver.Resolution =
+    CleanSourceResolver(
+      downloader = Downloader(httpClient = HttpClient(engine)),
+      log = { logLines += it },
+    ).resolve(EPISODE_URL, declaredEnclosureBytes = declaredBytes, expectedDurationSeconds = durationSeconds)
 }
 
 private const val EPISODE_URL = "https://example.com/episode.mp3"

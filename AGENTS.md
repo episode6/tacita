@@ -46,7 +46,14 @@ This is a single-module Kotlin Multiplatform project rooted at the top of the re
     the boundary detector
 - `src/jvmMain/` + `src/nativeMain/` — a single internal expect/actual (`systemFileSystem`),
   needed because okio has no common declaration of `FileSystem.SYSTEM`
-- `src/jvmTest/` — tests (use real mp3 fixtures in `src/jvmTest/resources/audio/`)
+- `src/commonTest/` — the test suite; runs on jvm and every host-runnable native target.
+  Real mp3 fixtures live in `src/commonTest/resources/audio/` and are embedded into
+  generated test code (base64) by the `generateTestFixtures` gradle task, since native
+  test binaries have no classpath resources. `TestFiles.kt` holds okio-based temp-file
+  helpers (plus a `systemTempDirectory` expect/actual in `jvmTest`/`nativeTest`)
+- `src/jvmTest/` — only what needs java-only codec libraries: the JLayer reference
+  comparison for `Mp3Decoder` and the acoustic tests that cross-encode fixtures through
+  jump3r at test time
 
 ## Build Configuration
 
