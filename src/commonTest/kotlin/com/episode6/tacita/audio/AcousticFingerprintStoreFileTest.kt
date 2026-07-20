@@ -9,18 +9,18 @@ import assertk.assertions.isFalse
 import assertk.assertions.isInstanceOf
 import assertk.assertions.isTrue
 import com.episode6.tacita.AdFingerprintInfo.Provenance
+import com.episode6.tacita.testTempDir
+import com.episode6.tacita.writeBytes
 import okio.IOException
 import okio.Path
-import okio.Path.Companion.toOkioPath
-import java.nio.file.Files
 import kotlin.random.Random
 import kotlin.test.Test
 
 class AcousticFingerprintStoreFileTest {
 
   private val store = AcousticFingerprintStoreFile()
-  private val dir = Files.createTempDirectory("afp-store-test").toFile().apply { deleteOnExit() }
-  private val path: Path = dir.resolve("ads.tacita-afp").toOkioPath()
+  private val dir = testTempDir("afp-store-test")
+  private val path: Path = dir / "ads.tacita-afp"
 
   /** A synthetic constellation — the codec doesn't care that no audio produced it. */
   private fun fingerprint(seed: Int, landmarks: Int = 100, durationMs: Long = 8_000): AcousticFingerprint {
@@ -100,7 +100,7 @@ class AcousticFingerprintStoreFileTest {
   }
 
   @Test fun `a corrupt store throws instead of returning garbage`() {
-    dir.resolve("ads.tacita-afp").writeBytes("not an acoustic fingerprint store".toByteArray())
+    path.writeBytes("not an acoustic fingerprint store".encodeToByteArray())
 
     assertFailure { store.read(path) }.isInstanceOf(IOException::class)
   }

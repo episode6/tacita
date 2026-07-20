@@ -10,9 +10,8 @@ import assertk.assertions.isNotNull
 import assertk.assertions.isNull
 import com.episode6.tacita.AdFingerprintInfo
 import com.episode6.tacita.systemFileSystem
-import okio.Path.Companion.toOkioPath
+import com.episode6.tacita.testTempFile
 import okio.use
-import java.io.File
 import kotlin.test.Test
 
 class AdFingerprinterTest {
@@ -104,8 +103,8 @@ class AdFingerprinterTest {
 
   @Test fun `secondsAtBytes maps match edges into the playback timeline`() {
     val composed = contentB + adBreak + contentA
-    val file = tempFile(composed)
-    val seconds = systemFileSystem.openReadOnly(file.toOkioPath()).use { handle ->
+    val file = testTempFile("fingerprint-test", composed)
+    val seconds = systemFileSystem.openReadOnly(file).use { handle ->
       parser.secondsAtBytes(handle, listOf(0, contentB.size, composed.size))
     }
 
@@ -115,15 +114,9 @@ class AdFingerprinterTest {
   }
 
   private fun matchIn(composition: ByteArray, vararg fingerprints: StoredAdFingerprint): List<AdFingerprinter.Match> {
-    val file = tempFile(composition)
-    return systemFileSystem.openReadOnly(file.toOkioPath()).use { handle ->
+    val file = testTempFile("fingerprint-test", composition)
+    return systemFileSystem.openReadOnly(file).use { handle ->
       fingerprinter.match(handle, fingerprints.toList())
     }
   }
-
-  private fun tempFile(bytes: ByteArray): File =
-    File.createTempFile("fingerprint-test", ".mp3").apply {
-      deleteOnExit()
-      writeBytes(bytes)
-    }
 }

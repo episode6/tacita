@@ -83,10 +83,10 @@ class Id3FrameReaderTest {
 
   private fun id3(version: Int, vararg chaps: Chap, padding: Int = 0): ByteArray {
     val body = chaps.map { c ->
-      val frameBody = c.id.toByteArray(Charsets.ISO_8859_1) + 0 +
+      val frameBody = c.id.encodeToByteArray() + 0 +
         int32(c.fromMs) + int32(c.toMs) + int32(NO_OFFSET) + int32(NO_OFFSET)
       val size = if (version == 4) syncsafe4(frameBody.size) else int32(frameBody.size.toLong())
-      "CHAP".toByteArray(Charsets.ISO_8859_1) + size + byteArrayOf(0, c.formatFlags.toByte()) + frameBody
+      "CHAP".encodeToByteArray() + size + byteArrayOf(0, c.formatFlags.toByte()) + frameBody
     }.reduce(ByteArray::plus) + ByteArray(padding)
     return byteArrayOf('I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte(), version.toByte(), 0, 0) +
       syncsafe4(body.size) + body

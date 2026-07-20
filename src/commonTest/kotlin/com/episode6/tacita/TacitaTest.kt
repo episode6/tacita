@@ -21,9 +21,7 @@ import io.ktor.http.encodeURLParameter
 import io.ktor.http.headersOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.runBlocking
-import okio.Path.Companion.toOkioPath
-import java.nio.file.Files
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 
 class TacitaTest {
@@ -33,13 +31,13 @@ class TacitaTest {
   private val adA = fixture("ad-a.mp3") // ~2.1s
   private val adB = fixture("ad-b.mp3") // ~3.1s
 
-  private val dir = Files.createTempDirectory("tacita-test").toFile().apply { deleteOnExit() }
-  private val outputFile = dir.resolve("episode.mp3")
-  private val referenceFile = dir.resolve("episode.mp3.adref")
+  private val dir = testTempDir("tacita-test")
+  private val outputFile = dir / "episode.mp3"
+  private val referenceFile = dir / "episode.mp3.adref"
 
   private var requestCount = 0
 
-  @Test fun `downloads both copies, reports progress and cuts ads`() = runBlocking<Unit> {
+  @Test fun `downloads both copies - reports progress and cuts ads`() = runTest {
     val states = downloadPodcast(
       responses = listOf(contentA + adA + contentB, contentA + adB + contentB),
       overwrite = false,
@@ -48,7 +46,7 @@ class TacitaTest {
 
     assertThat(requestCount).isEqualTo(2)
     val downloadedFiles = states.filterIsInstance<DownloadState.Downloading>().map { it.file }.distinct()
-    assertThat(downloadedFiles).containsExactly(outputFile.toOkioPath(), referenceFile.toOkioPath())
+    assertThat(downloadedFiles).containsExactly(outputFile, referenceFile)
     states.filterIsInstance<DownloadState.Downloading>().forEach {
       assertThat(it.percentComplete).isBetween(0f, 1f)
     }
@@ -62,7 +60,7 @@ class TacitaTest {
     assertThat(splice.timeMs, name = "splice point in the output timeline").isBetween(5_600L, 6_600L) // ad was at ~6.1s
   }
 
-  @Test fun `skips ad cutting when cutAds is false`() = runBlocking<Unit> {
+  @Test fun `skips ad cutting when cutAds is false`() = runTest {
     val bytes = contentA + adA + contentB
 
     val states = downloadPodcast(responses = listOf(bytes), overwrite = false, cutAds = false).toList()
@@ -75,7 +73,7 @@ class TacitaTest {
     assertThat(referenceFile.exists()).isFalse()
   }
 
-  @Test fun `promotes the overwritten file to reference instead of downloading one`() = runBlocking<Unit> {
+  @Test fun `promotes the overwritten file to reference instead of downloading one`() = runTest {
     val previousDownload = contentA + adB + contentB
     outputFile.writeBytes(previousDownload)
 
@@ -91,7 +89,7 @@ class TacitaTest {
     assertThat(states.last()).isInstanceOf(DownloadState.Complete::class)
   }
 
-  @Test fun `promotes over a stale reference left by an earlier overwrite`() = runBlocking<Unit> {
+  @Test fun `promotes over a stale reference left by an earlier overwrite`() = runTest {
     val previousDownload = contentA + adB + contentB
     outputFile.writeBytes(previousDownload)
     referenceFile.writeBytes(contentA + adA + contentB) // stale: already consumed by an earlier run
@@ -108,7 +106,7 @@ class TacitaTest {
     assertThat(states.last()).isInstanceOf(DownloadState.Complete::class)
   }
 
-  @Test fun `reuses an existing reference file`() = runBlocking<Unit> {
+  @Test fun `reuses an existing reference file`() = runTest {
     referenceFile.writeBytes(contentA + adB + contentB)
 
     downloadPodcast(responses = listOf(contentA + adA + contentB), overwrite = false, cutAds = true).toList()
@@ -117,42 +115,42 @@ class TacitaTest {
     assertThat(outputFile.readBytes()).isEqualTo(contentA + contentB)
   }
 
-  @Test fun `creates a fresh client per download by default`() = runBlocking<Unit> {
+  @Test fun `creates a fresh client per download by default`() = runTest {
     var factoryCalls = 0
     val sharedEngine = engine(listOf(contentA, contentA))
     val tacita = Tacita.withClient { factoryCalls++; HttpClient(sharedEngine) }
 
-    tacita.downloadPodcast(URL, outputFile.toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
-    tacita.downloadPodcast(URL, dir.resolve("two.mp3").toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
+    tacita.downloadPodcast(URL, outputFile, referenceFile, overwrite = false, cutAds = false).toList()
+    tacita.downloadPodcast(URL, (dir / "two.mp3"), referenceFile, overwrite = false, cutAds = false).toList()
 
     assertThat(factoryCalls).isEqualTo(2)
   }
 
-  @Test fun `shares a single never-closed client when reuse is true`() = runBlocking<Unit> {
+  @Test fun `shares a single never-closed client when reuse is true`() = runTest {
     var factoryCalls = 0
     val sharedEngine = engine(listOf(contentA, contentA))
     val tacita = Tacita.withClient(reuse = true) { factoryCalls++; HttpClient(sharedEngine) }
 
-    tacita.downloadPodcast(URL, outputFile.toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
-    tacita.downloadPodcast(URL, dir.resolve("two.mp3").toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = false).toList()
+    tacita.downloadPodcast(URL, outputFile, referenceFile, overwrite = false, cutAds = false).toList()
+    tacita.downloadPodcast(URL, (dir / "two.mp3"), referenceFile, overwrite = false, cutAds = false).toList()
 
     assertThat(factoryCalls).isEqualTo(1)
     // the second download used the same, still-open client
-    assertThat(dir.resolve("two.mp3").readBytes()).isEqualTo(contentA)
+    assertThat((dir / "two.mp3").readBytes()).isEqualTo(contentA)
   }
 
-  @Test fun `reports ad-cut outcome to the log param`() = runBlocking<Unit> {
+  @Test fun `reports ad-cut outcome to the log param`() = runTest {
     val logLines = mutableListOf<String>()
     val engine = engine(listOf(contentA + adA + contentB, contentA + adB + contentB))
     val tacita = Tacita.withClient(log = { logLines += it }) { HttpClient(engine) }
 
-    tacita.downloadPodcast(URL, outputFile.toOkioPath(), referenceFile.toOkioPath(), overwrite = false, cutAds = true).toList()
+    tacita.downloadPodcast(URL, outputFile, referenceFile, overwrite = false, cutAds = true).toList()
 
     assertThat(logLines).hasSize(1)
     assertThat(logLines.single()).startsWith("AdCutter: episode.mp3: AdsCut")
   }
 
-  @Test fun `serves a verified clean copy directly and skips the diff`() = runBlocking<Unit> {
+  @Test fun `serves a verified clean copy directly and skips the diff`() = runTest {
     val clean = contentA + contentB
     val logLines = mutableListOf<String>()
     val engine = engine(listOf(clean, clean)) // one probe, one download
@@ -160,8 +158,8 @@ class TacitaTest {
 
     val states = tacita.downloadPodcast(
       url = URL,
-      outputFile = outputFile.toOkioPath(),
-      referenceFile = referenceFile.toOkioPath(),
+      outputFile = outputFile,
+      referenceFile = referenceFile,
       overwrite = false,
       cutAds = true,
       declaredEnclosureBytes = clean.size.toLong(),
@@ -178,7 +176,7 @@ class TacitaTest {
     assertThat(candidates.filter { it.source == AdBoundaryCandidate.Source.DIFF_CUT }, name = "no diff ran").isEmpty()
   }
 
-  @Test fun `surfaces guard-refused diff ranges as ad boundary candidates`() = runBlocking<Unit> {
+  @Test fun `surfaces guard-refused diff ranges as ad boundary candidates`() = runTest {
     // ~5.2s of ads in ~19.4s exceeds the 25% cut guard: the file is left untouched,
     // but the ad-shaped range still comes back as start/end candidates
     val bytes = contentA + adA + adB + contentB
@@ -197,7 +195,7 @@ class TacitaTest {
     assertThat(diffCuts[1].timeMs, name = "refused range end").isBetween(10_800L, 11_800L) // and end at ~11.3s
   }
 
-  @Test fun `surfaces dai slot positions leaked by the redirect chain as candidates`() = runBlocking<Unit> {
+  @Test fun `surfaces dai slot positions leaked by the redirect chain as candidates`() = runTest {
     val clean = contentA + contentB
     val variantUrl = "https://cdn.example.com/v1/variant/abc.mp3?media_type=dynamic" +
       "&m=${"[1478560,2682539]".encodeURLParameter()}&al=4170360&ab=128"
@@ -225,8 +223,8 @@ class TacitaTest {
 
     val states = tacita.downloadPodcast(
       url = URL,
-      outputFile = outputFile.toOkioPath(),
-      referenceFile = referenceFile.toOkioPath(),
+      outputFile = outputFile,
+      referenceFile = referenceFile,
       overwrite = false,
       cutAds = true,
       declaredEnclosureBytes = clean.size.toLong(),
@@ -238,7 +236,7 @@ class TacitaTest {
     assertThat(daiSlots.map { it.timeMs }).containsExactly(1_478_560L, 2_682_539L)
   }
 
-  @Test fun `falls back to the diff pipeline when no serving matches the feed's declared size`() = runBlocking<Unit> {
+  @Test fun `falls back to the diff pipeline when no serving matches the feed's declared size`() = runTest {
     // adA (4310B) must exceed the resolver's 4096B tolerance floor or the filled copy would validate
     val filledA = contentA + adA + contentB
     val filledB = contentA + adB + contentB
@@ -248,8 +246,8 @@ class TacitaTest {
 
     val states = tacita.downloadPodcast(
       url = URL,
-      outputFile = outputFile.toOkioPath(),
-      referenceFile = referenceFile.toOkioPath(),
+      outputFile = outputFile,
+      referenceFile = referenceFile,
       overwrite = false,
       cutAds = true,
       declaredEnclosureBytes = (contentA + contentB).size.toLong(),
@@ -260,7 +258,7 @@ class TacitaTest {
     assertThat(outputFile.readBytes(), name = "diff pipeline should still cut the ads").isEqualTo(contentA + contentB)
   }
 
-  @Test fun `a truncated clean download is discarded and the diff pipeline runs instead`() = runBlocking<Unit> {
+  @Test fun `a truncated clean download is discarded and the diff pipeline runs instead`() = runTest {
     val clean = contentA + contentB
     val filledA = contentA + adA + contentB
     val filledB = contentA + adB + contentB
@@ -280,8 +278,8 @@ class TacitaTest {
 
     val states = tacita.downloadPodcast(
       url = URL,
-      outputFile = outputFile.toOkioPath(),
-      referenceFile = referenceFile.toOkioPath(),
+      outputFile = outputFile,
+      referenceFile = referenceFile,
       overwrite = false,
       cutAds = true,
       declaredEnclosureBytes = clean.size.toLong(),
@@ -292,8 +290,8 @@ class TacitaTest {
     assertThat(outputFile.readBytes(), name = "truncated copy must never be served").isEqualTo(contentA + contentB)
   }
 
-  @Test fun `seeds diff-proven fingerprints from applied cuts and flags their recurrence in later downloads`() = runBlocking<Unit> {
-    val fpStore = dir.resolve("ads.tacita-fp").toOkioPath()
+  @Test fun `seeds diff-proven fingerprints from applied cuts and flags their recurrence in later downloads`() = runTest {
+    val fpStore = (dir / "ads.tacita-fp")
     val longContent = contentA + contentB + contentA + contentB // ~28.4s, keeps the ~7.3s break under the 25% cut guard
     val adBreak = adA + adB + adA // ~7.3s: above the 5s fingerprint floor
     val logLines = mutableListOf<String>()
@@ -302,7 +300,7 @@ class TacitaTest {
     val engine1 = engine(listOf(longContent + adBreak, longContent))
     val tacita1 = Tacita.withClient(log = { logLines += it }) { HttpClient(engine1) }
     tacita1.downloadPodcast(
-      URL, outputFile.toOkioPath(), referenceFile.toOkioPath(),
+      URL, outputFile, referenceFile,
       overwrite = false, cutAds = true, fingerprintStore = fpStore,
     ).toList()
 
@@ -315,11 +313,11 @@ class TacitaTest {
     // episode 2: sticky fill -> identical copies -> the diff is blind, but the store is not
     requestCount = 0
     val episode2 = contentB + adBreak + contentA
-    val output2 = dir.resolve("two.mp3")
+    val output2 = (dir / "two.mp3")
     val engine2 = engine(listOf(episode2, episode2))
     val tacita2 = Tacita.withClient { HttpClient(engine2) }
     val states = tacita2.downloadPodcast(
-      URL, output2.toOkioPath(), dir.resolve("two.mp3.adref").toOkioPath(),
+      URL, output2, (dir / "two.mp3.adref"),
       overwrite = false, cutAds = true, fingerprintStore = fpStore,
     ).toList()
 
@@ -332,25 +330,25 @@ class TacitaTest {
     fpCandidates.forEach { assertThat(it.confidence).isBetween(0.84f, 1f) }
   }
 
-  @Test fun `confirmAd stores a human-confirmed fingerprint that flags later recurrences`() = runBlocking<Unit> {
-    val fpStore = dir.resolve("ads.tacita-fp").toOkioPath()
+  @Test fun `confirmAd stores a human-confirmed fingerprint that flags later recurrences`() = runTest {
+    val fpStore = (dir / "ads.tacita-fp")
     val bigBreak = adA + adB + adA + adB // ~10.4s: big enough to survive sloppy edge selection
     outputFile.writeBytes(contentA + bigBreak + contentB)
     val tacita = Tacita.withClient { HttpClient(engine(emptyList())) }
 
     // the listener heard the break at ~6.1s..16.5s and confirmed it imprecisely
-    val info = tacita.confirmAd(outputFile.toOkioPath(), fpStore, startMs = 6_400, endMs = 16_200)
+    val info = tacita.confirmAd(outputFile, fpStore, startMs = 6_400, endMs = 16_200)
 
     assertThat(info.provenance).isEqualTo(AdFingerprintInfo.Provenance.HUMAN_CONFIRMED)
     assertThat(tacita.fingerprints(fpStore)).containsExactly(info)
 
     // a later episode carries the same creative at a different position
     val episode2 = contentB + bigBreak + contentA
-    val output2 = dir.resolve("two.mp3")
+    val output2 = (dir / "two.mp3")
     val engine2 = engine(listOf(episode2, episode2))
     val tacita2 = Tacita.withClient { HttpClient(engine2) }
     val states = tacita2.downloadPodcast(
-      URL, output2.toOkioPath(), dir.resolve("two.mp3.adref").toOkioPath(),
+      URL, output2, (dir / "two.mp3.adref"),
       overwrite = false, cutAds = true, fingerprintStore = fpStore,
     ).toList()
 
@@ -366,17 +364,17 @@ class TacitaTest {
     assertThat(tacita.removeFingerprint(fpStore, info.id), name = "second removal finds nothing").isFalse()
   }
 
-  @Test fun `confirmAd rejects ranges too short to fingerprint`() = runBlocking<Unit> {
+  @Test fun `confirmAd rejects ranges too short to fingerprint`() = runTest {
     outputFile.writeBytes(contentA + contentB)
     val tacita = Tacita.withClient { HttpClient(engine(emptyList())) }
 
     assertFailure {
-      tacita.confirmAd(outputFile.toOkioPath(), dir.resolve("ads.tacita-fp").toOkioPath(), startMs = 1_000, endMs = 3_000)
+      tacita.confirmAd(outputFile, (dir / "ads.tacita-fp"), startMs = 1_000, endMs = 3_000)
     }.isInstanceOf(IllegalArgumentException::class)
   }
 
-  @Test fun `prunes fingerprints that match a verified-clean serving`() = runBlocking<Unit> {
-    val fpStore = dir.resolve("ads.tacita-fp").toOkioPath()
+  @Test fun `prunes fingerprints that match a verified-clean serving`() = runTest {
+    val fpStore = (dir / "ads.tacita-fp")
     val clean = contentA + contentB + contentA
     outputFile.writeBytes(clean)
     val logLines = mutableListOf<String>()
@@ -384,12 +382,12 @@ class TacitaTest {
     val tacita = Tacita.withClient(log = { logLines += it }) { HttpClient(engine) }
 
     // a mis-confirmed "ad" that is actually show content (~contentB, 6.1s..14.2s)
-    tacita.confirmAd(outputFile.toOkioPath(), fpStore, startMs = 6_500, endMs = 13_500)
+    tacita.confirmAd(outputFile, fpStore, startMs = 6_500, endMs = 13_500)
     assertThat(tacita.fingerprints(fpStore)).hasSize(1)
 
-    val output2 = dir.resolve("clean.mp3")
+    val output2 = (dir / "clean.mp3")
     val states = tacita.downloadPodcast(
-      URL, output2.toOkioPath(), dir.resolve("clean.mp3.adref").toOkioPath(),
+      URL, output2, (dir / "clean.mp3.adref"),
       overwrite = false, cutAds = true,
       declaredEnclosureBytes = clean.size.toLong(), fingerprintStore = fpStore,
     ).toList()
@@ -400,13 +398,11 @@ class TacitaTest {
     assertThat(candidates.filter { it.source == AdBoundaryCandidate.Source.FINGERPRINT }, name = "pruned fingerprints emit no candidates").isEmpty()
   }
 
-  @Test fun `fails when the output file exists and overwrite is false`() {
+  @Test fun `fails when the output file exists and overwrite is false`() = runTest {
     outputFile.writeBytes(contentA)
 
     assertFailure {
-      runBlocking {
-        downloadPodcast(responses = listOf(contentA), overwrite = false, cutAds = false).toList()
-      }
+      downloadPodcast(responses = listOf(contentA), overwrite = false, cutAds = false).toList()
     }.isInstanceOf(FileAlreadyExistsException::class)
   }
 
@@ -423,8 +419,8 @@ class TacitaTest {
     val engine = engine(responses)
     return Tacita.withClient { HttpClient(engine) }.downloadPodcast(
       url = URL,
-      outputFile = outputFile.toOkioPath(),
-      referenceFile = referenceFile.toOkioPath(),
+      outputFile = outputFile,
+      referenceFile = referenceFile,
       overwrite = overwrite,
       cutAds = cutAds,
     )

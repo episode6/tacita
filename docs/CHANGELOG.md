@@ -2,6 +2,16 @@
 
 ### v0.0.5-SNAPSHOT - Unreleased
 
+- Internal: **tests now run on native targets** — the test suite moved from `jvmTest`
+  to `commonTest`, so CI's linux/mingw/macos shards exercise the platform-varying
+  surface (`atomicMove` semantics, mingw filesystem behavior, `Dispatchers.IO` on
+  native) instead of compile-verifying it. The mp3 fixtures are embedded into generated
+  test code at build time (base64) since kotlin/native test binaries have no classpath
+  resources. Only the JLayer/jump3r-dependent tests stay jvm-only (the `Mp3Decoder`
+  digest pin — which verifies cross-platform bit-identical PCM — now runs everywhere;
+  the JLayer reference comparison split into `Mp3DecoderReferenceTest`). No production
+  code or API change
+
 - **Acoustic ad-fingerprint store** (opt-in): `Tacita.downloadPodcast` gains optional
   `acousticFingerprintStore: Path` + `feedId: String` params. When provided (with
   `cutAds`), tacita maintains a store of level-invariant acoustic fingerprints

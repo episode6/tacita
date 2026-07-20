@@ -9,9 +9,10 @@ import assertk.assertions.isEqualTo
 import assertk.assertions.isInstanceOf
 import assertk.assertions.isNotEmpty
 import assertk.assertions.prop
-import kotlinx.coroutines.runBlocking
-import okio.Path.Companion.toOkioPath
-import java.io.File
+import com.episode6.tacita.readBytes
+import com.episode6.tacita.testTempFile
+import kotlinx.coroutines.test.runTest
+import okio.Path
 import kotlin.test.Test
 
 class AdCutterTest {
@@ -24,11 +25,11 @@ class AdCutterTest {
   private val adA = fixture("ad-a.mp3") // ~2.1s
   private val adB = fixture("ad-b.mp3") // ~3.1s
 
-  @Test fun `cuts ads that differ between the two copies`() = runBlocking {
+  @Test fun `cuts ads that differ between the two copies`() = runTest {
     val file = tempFile(contentA + adA + contentB)
     val reference = tempFile(contentA + adB + contentB)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
       .prop(AdCutter.Result.AdsCut::secondsRemoved).isCloseTo(2.1, SECONDS_TOLERANCE)
@@ -38,84 +39,84 @@ class AdCutterTest {
     assertThat(file.readBytes()).isEqualTo(contentA + contentB)
   }
 
-  @Test fun `cuts ads absent from the reference copy`() = runBlocking {
+  @Test fun `cuts ads absent from the reference copy`() = runTest {
     val file = tempFile(contentA + adA + contentB)
     val reference = tempFile(contentA + contentB)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
     assertThat(file.readBytes()).isEqualTo(contentA + contentB)
   }
 
-  @Test fun `finds no ads when only the reference copy has them`() = runBlocking {
+  @Test fun `finds no ads when only the reference copy has them`() = runTest {
     val file = tempFile(contentA + contentB)
     val reference = tempFile(contentA + adB + contentB)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.NoAdsFound::class)
     assertThat(file.readBytes()).isEqualTo(contentA + contentB)
   }
 
-  @Test fun `finds no ads when the copies are identical`() = runBlocking {
+  @Test fun `finds no ads when the copies are identical`() = runTest {
     val bytes = contentA + adA + contentB // even an ad is kept if both copies agree on it
     val file = tempFile(bytes)
     val reference = tempFile(bytes)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.NoAdsFound::class)
     assertThat(file.readBytes()).isEqualTo(bytes)
   }
 
-  @Test fun `recovers content that lost its stitch marker`() = runBlocking {
+  @Test fun `recovers content that lost its stitch marker`() = runTest {
     // strip content-b's leading tag frame so it merges into the ad's segment,
     // like an Acast stitch that drops the join marker
     val headerlessB = contentB.copyOfRange(parser.frames(contentB, 0, contentB.size).first().endByte, contentB.size)
     val file = tempFile(contentA + adA + headerlessB)
     val reference = tempFile(contentA + contentB)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
       .prop(AdCutter.Result.AdsCut::secondsRemoved).isCloseTo(2.1, SECONDS_TOLERANCE)
     assertThat(file.readBytes()).isEqualTo(contentA + headerlessB)
   }
 
-  @Test fun `keeps material served identically in both copies - the known blind spot`() = runBlocking {
+  @Test fun `keeps material served identically in both copies - the known blind spot`() = runTest {
     // a sticky ad with identical bytes in both copies is indistinguishable from baked-in
     // episode material; the cutter errs toward keeping it
     val bytes = contentA + adA + contentB
     val file = tempFile(bytes)
     val reference = tempFile(contentA + adA + adB + contentB)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.NoAdsFound::class)
     assertThat(file.readBytes()).isEqualTo(bytes)
   }
 
-  @Test fun `cuts only the unshared part of a break that merged with stable material`() = runBlocking {
+  @Test fun `cuts only the unshared part of a break that merged with stable material`() = runTest {
     // ad-b was injected right after stable material (ad-a here) without a stitch marker;
     // only the bytes absent from the reference are cut
     val headerlessAdB = adB.copyOfRange(parser.frames(adB, 0, adB.size).first().endByte, adB.size)
     val file = tempFile(contentA + adA + headerlessAdB + contentB)
     val reference = tempFile(contentA + adA + contentB)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
       .prop(AdCutter.Result.AdsCut::secondsRemoved).isCloseTo(3.1, SECONDS_TOLERANCE)
     assertThat(file.readBytes()).isEqualTo(contentA + adA + contentB)
   }
 
-  @Test fun `skips when too much of the file would be removed`() = runBlocking {
+  @Test fun `skips when too much of the file would be removed`() = runTest {
     val bytes = contentA + adA + adB + contentB // ~5.2s of ads in ~19.4s: over the 25% default
     val file = tempFile(bytes)
     val reference = tempFile(contentA + contentB)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.Skipped::class)
     // the refused range is still reported, as payload for the ad-boundary candidates
@@ -125,19 +126,19 @@ class AdCutterTest {
     assertThat(file.readBytes()).isEqualTo(bytes)
   }
 
-  @Test fun `skips when the copies do not agree on enough of the file`() = runBlocking {
+  @Test fun `skips when the copies do not agree on enough of the file`() = runTest {
     val bytes = contentA + contentB
     val file = tempFile(bytes)
     val reference = tempFile(adA + adB)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.Skipped::class)
     assertThat((result as AdCutter.Result.Skipped).cuts, name = "refused cuts are still reported").isNotEmpty()
     assertThat(file.readBytes()).isEqualTo(bytes)
   }
 
-  @Test fun `cuts insertions with no stitch tag frames at all`() = runBlocking {
+  @Test fun `cuts insertions with no stitch tag frames at all`() = runTest {
     // Audioboom-style: neither the inserted ad nor the following content carries a tag
     // frame, so segment structure is invisible and only byte alignment can find the ad
     val headerless = { bytes: ByteArray ->
@@ -146,20 +147,20 @@ class AdCutterTest {
     val file = tempFile(contentA + headerless(adA) + headerless(contentB))
     val reference = tempFile(contentA + headerless(contentB))
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
       .prop(AdCutter.Result.AdsCut::secondsRemoved).isCloseTo(2.1, SECONDS_TOLERANCE)
     assertThat(file.readBytes()).isEqualTo(contentA + headerless(contentB))
   }
 
-  @Test fun `seeds diff-proven fingerprints of the removed ranges when requested`() = runBlocking {
+  @Test fun `seeds diff-proven fingerprints of the removed ranges when requested`() = runTest {
     val adBreak = adA + adB + adA // ~7.3s: above the fingerprint length floor
     val longContent = contentA + contentB + contentA + contentB // keeps the break under the 25% guard
     val file = tempFile(longContent + adBreak)
     val reference = tempFile(longContent)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath(), seedFingerprints = true)
+    val result = adCutter.cutAds(file, reference, seedFingerprints = true)
 
     assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
     val fingerprint = (result as AdCutter.Result.AdsCut).fingerprints.single()
@@ -167,23 +168,23 @@ class AdCutterTest {
     assertThat(fingerprint.durationMs).isBetween(6_800L, 7_800L)
   }
 
-  @Test fun `cuts below the fingerprint length floor seed nothing`() = runBlocking {
+  @Test fun `cuts below the fingerprint length floor seed nothing`() = runTest {
     val file = tempFile(contentA + adA + contentB) // the ~2.1s cut is too short to fingerprint
     val reference = tempFile(contentA + contentB)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath(), seedFingerprints = true)
+    val result = adCutter.cutAds(file, reference, seedFingerprints = true)
 
     assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
     assertThat((result as AdCutter.Result.AdsCut).fingerprints).isEmpty()
   }
 
-  @Test fun `shifts id3 chapter timestamps by the material cut before them`() = runBlocking {
+  @Test fun `shifts id3 chapter timestamps by the material cut before them`() = runTest {
     // ad-a spans ~6.1s..8.2s of the composition; chapter 1 starts before it, chapter 2 after
     val id3 = buildId3(chapter(id = "ch0", fromMs = 0, toMs = 5_000), chapter(id = "ch1", fromMs = 10_000, toMs = 14_000))
     val file = tempFile(id3 + contentA + adA + contentB)
     val reference = tempFile(contentA + contentB)
 
-    val result = adCutter.cutAds(file.toOkioPath(), reference.toOkioPath())
+    val result = adCutter.cutAds(file, reference)
 
     assertThat(result).isInstanceOf(AdCutter.Result.AdsCut::class)
     val shiftMs = ((result as AdCutter.Result.AdsCut).secondsRemoved * 1000).toLong()
@@ -196,9 +197,9 @@ class AdCutterTest {
   }
 
   private fun chapter(id: String, fromMs: Long, toMs: Long): ByteArray {
-    val body = id.toByteArray(Charsets.ISO_8859_1) + 0 +
+    val body = id.encodeToByteArray() + 0 +
       int32(fromMs) + int32(toMs) + int32(0xFFFFFFFFL) + int32(0xFFFFFFFFL)
-    return "CHAP".toByteArray(Charsets.ISO_8859_1) + int32(body.size.toLong()) + byteArrayOf(0, 0) + body
+    return "CHAP".encodeToByteArray() + int32(body.size.toLong()) + byteArrayOf(0, 0) + body
   }
 
   private fun buildId3(vararg frames: ByteArray): ByteArray {
@@ -215,7 +216,7 @@ class AdCutterTest {
   private fun parseChapters(data: ByteArray): List<Pair<Long, Long>> {
     val chapters = mutableListOf<Pair<Long, Long>>()
     var pos = 10
-    while (pos + 10 < data.size && String(data, pos, 4, Charsets.ISO_8859_1) == "CHAP") {
+    while (pos + 10 < data.size && data.decodeToString(pos, pos + 4) == "CHAP") {
       val size = int32At(data, pos + 4).toInt()
       var p = pos + 10
       while (data[p] != 0.toByte()) p++
@@ -234,11 +235,7 @@ class AdCutterTest {
     (data[at].toLong() and 0xFF shl 24) or (data[at + 1].toLong() and 0xFF shl 16) or
       (data[at + 2].toLong() and 0xFF shl 8) or (data[at + 3].toLong() and 0xFF)
 
-  private fun tempFile(bytes: ByteArray): File =
-    File.createTempFile("adcut-test", ".mp3").apply {
-      deleteOnExit()
-      writeBytes(bytes)
-    }
+  private fun tempFile(bytes: ByteArray): Path = testTempFile("adcut-test", bytes)
 }
 
 private const val SECONDS_TOLERANCE = 0.5

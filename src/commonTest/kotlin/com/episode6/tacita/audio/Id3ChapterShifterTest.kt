@@ -137,10 +137,10 @@ class Id3ChapterShifterTest {
 
   private fun id3(version: Int, vararg chaps: Chap): ByteArray {
     val body = chaps.map { c ->
-      val frameBody = c.id.toByteArray(Charsets.ISO_8859_1) + 0 +
+      val frameBody = c.id.encodeToByteArray() + 0 +
         int32(c.fromMs) + int32(c.toMs) + int32(c.fromByte) + int32(c.toByte)
       val size = if (version == 4) syncsafe4(frameBody.size) else int32(frameBody.size.toLong())
-      "CHAP".toByteArray(Charsets.ISO_8859_1) + size + byteArrayOf(0, c.formatFlags.toByte()) + frameBody
+      "CHAP".encodeToByteArray() + size + byteArrayOf(0, c.formatFlags.toByte()) + frameBody
     }.reduce(ByteArray::plus)
     return byteArrayOf('I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte(), version.toByte(), 0, 0) +
       syncsafe4(body.size) + body
@@ -151,7 +151,7 @@ class Id3ChapterShifterTest {
     val version = data[3].toInt()
     val chapters = mutableListOf<LongArray>()
     var pos = 10
-    while (pos + 10 < data.size && String(data, pos, 4, Charsets.ISO_8859_1) == "CHAP") {
+    while (pos + 10 < data.size && data.decodeToString(pos, pos + 4) == "CHAP") {
       val size = if (version == 4) syncsafeAt(data, pos + 4) else int32At(data, pos + 4).toInt()
       var p = pos + 10
       while (data[p] != 0.toByte()) p++

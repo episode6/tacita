@@ -29,15 +29,14 @@ Remaining:
 - **Field measurements still owed**: Acast player-tier reuse, cross-week creative
   recurrence (fingerprint shelf life), acoustic match-pass cost on mobile.
 
-## 1. Run tests on non-JVM targets
+## ~~1. Run tests on non-JVM targets~~ (done 2026-07-19)
 
-All tests live in `src/jvmTest`, so the 17 native targets are compile-verified only. The
-production logic is 100% common code and the CI shards would run linux/mingw/macos native
-tests for free if tests moved to `commonTest`. Blocker: fixture loading — there are no
-classpath resources on native. Options: embed the ~40KB of mp3 fixtures as generated code
-(base64), or an expect/actual test-path helper reading via okio. The untested surface is
-exactly the platform-varying stuff: `atomicMove` semantics, mingw filesystem behavior,
-`Dispatchers.IO` on native.
+The suite moved to `commonTest` (fixtures embedded as base64 via the
+`generateTestFixtures` gradle task; okio-based temp-file helpers; `runTest` instead of
+`runBlocking`). Still jvm-only: the JLayer reference comparison (`Mp3DecoderReferenceTest`)
+and the jump3r-encoding acoustic tests (`AcousticFingerprinterTest`, `TacitaAcousticTest`)
+— both depend on java-only codec libraries. Moving those needs pre-generated cross-encode
+fixtures checked in (or a native LAME port), which hasn't been worth it.
 
 ## ~~2. Downloader: check HTTP status + direct tests~~ (done 2026-07-04)
 
