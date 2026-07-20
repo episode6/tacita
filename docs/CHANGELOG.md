@@ -1,6 +1,6 @@
 # ChangeLog
 
-### v0.0.5-SNAPSHOT - Unreleased
+### v0.0.5 - Released 7/20/2026
 
 - Internal: **tests now run on native targets** — the test suite moved from `jvmTest`
   to `commonTest`, so CI's linux/mingw/macos shards exercise the platform-varying
