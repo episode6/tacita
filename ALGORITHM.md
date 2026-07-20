@@ -457,6 +457,141 @@ unexamined dogma:
   fingerprint only for the feed that observed it — or downgrades it — never deletes
   another feed's confirmation outright).
 
+### Acoustic-layer groundwork: common-code mp3 decoder (2026-07-19, additive)
+
+The acoustic layer's known large lift — a PCM decoder that runs on every KMP target — is
+done: `Mp3Decoder` (internal) is a hand-port of minimp3 (CC0) to common Kotlin, in the exact
+configuration ported from (scalar path, float output, Layer III only; MPEG-1/2/2.5, mono
+through joint stereo, bit reservoir, free format). The constant tables were extracted
+mechanically from `minimp3.h` by `scripts/port-minimp3-tables.py` — ~3,000 values with zero
+hand transcription.
+
+**Verification (2026-07-19):** the port was compared against the C minimp3 compiled locally
+(gcc 15.2, same `MINIMP3_ONLY_MP3`/`MINIMP3_FLOAT_OUTPUT`/`MINIMP3_NO_SIMD` configuration)
+on three streams — the two committed MPEG-2 22.05kHz mono fixtures and a new MPEG-1
+44.1kHz joint-stereo 128kbps fixture (`stereo.mp3`, generated with jump3r/LAME 3.98 from
+transient-heavy synthetic PCM to force the short-block and mid/side paths). All 763,200
+decoded samples were **bit-identical** across all three streams. `Mp3DecoderTest` pins that
+result with SHA-256 digests of the decoded PCM (the decode path is pure IEEE-754 single
+arithmetic, no libm, so the bits are platform-deterministic) and cross-checks stream
+structure against JLayer as an independent implementation. Measured in passing: JLayer's
+own output differs from minimp3 by ~6 LSB rms (its known limited accuracy) and clamps at
+16-bit full scale where the float path legitimately peaks above 1.0 — neither affects us,
+but don't be surprised by it if using JLayer as an oracle later.
+
+Decoder behavior notes for the future fingerprinter: output is interleaved `[-1, 1]` floats
+(unclamped); a corrupt/garbage buffer never throws — the huffman fast path reads zeros where
+C would over-read stack garbage (deliberate divergence, same "no crash, nonsense output"
+contract); frames are skipped (0 samples, `frameBytes > 0`) until the bit reservoir primes,
+matching minimp3. The FFT + spectral-peak constellation landed same-day (next section),
+as did the global-store provenance design ("Shipped: the global acoustic store").
+
+### Acoustic fingerprinter core: FFT + spectral-peak constellation (2026-07-19, additive)
+
+`AcousticFingerprinter` (internal, common code, plus a small radix-2 `Fft`) is the
+level-invariant matching layer itself — extract/match only, deliberately **not wired into
+the download pipeline or any store** (that integration is blocked on the global-store
+provenance design above, and on the field validation below). Pipeline: streaming
+`Mp3Decoder` frames → mono downmix → linear resample to 11.025kHz → Hann STFT
+(1024-sample window, 512 hop ≈ 46ms frames, 0–5.5kHz band) → spectral peaks → landmark
+hashes (anchor bin, target bin, frame delta packed in 24 bits; fanout 6, ≤63 frames
+ahead) → matching by per-fingerprint time-offset consensus (a real occurrence stacks
+votes on one offset ±1 frame; coincidental hash collisions scatter). Floors mirror the
+byte layer: ≥5s to fingerprint, ≥5s matched span *and* ≥20 agreeing landmarks to report.
+Both passes stream — peak memory is bounded by landmark lists, never episode PCM (the
+2026-07-05 mobile OOM lesson).
+
+**Gain invariance is by construction, not calibration:** peak selection uses only
+frame-relative thresholds — a peak must strictly dominate its ±2-frame ±3-bin
+neighborhood, clear the frame's geometric-mean log-power by 1.5 nats, and sit within 12
+nats of the frame's strongest bin. A global gain change moves every quantity together.
+`AcousticFingerprinterTest` pins ≥95% identical landmarks between 1.0× and 0.5× gain
+(measured 98.6%; the shortfall from 100% is float rounding flipping borderline peaks —
+which is also why acoustic fingerprint ids, unlike byte-layer ids, are only stable for
+identical decoded PCM, not across encodes or platforms' libm differences).
+
+**Validation (2026-07-19, synthetic only so far):** jump3r (the pure-java LAME port that
+generated `stereo.mp3`) is now a jvmTest dependency used as an in-test encoder, so the
+tests re-create the exact serving shapes the layer exists for. Pinned green: a creative
+fingerprinted from a 128kbps 44.1kHz encode is found (with ~±1s edges) in an episode that
+embeds the same audio re-encoded at 64kbps 22.05kHz at 0.7× gain — the Simplecast-class
+per-episode-transcode case byte matching can never touch; the same across a byte-level
+stitch of three independent encoder runs (the Audioboom shape); both occurrences of one
+creative rotated through two slots; and no match in a creative-free episode.
+
+**Empirical lesson — stationary audio is degenerate (and the committed fixtures proved
+it):** a first test matched `single.mp3` against a stitch of the other committed fixtures
+and got a *stronger* match on `content-a.mp3` than on the actual embedded copy — those
+fixtures are held test tones, and a held tone collapses the constellation to a handful of
+distinct hashes that align at many offsets against any similar tone. Two guards came out
+of this: the dynamic-range bound above (a tone's quantization-noise floor otherwise
+sneaks spurious "peaks" past the geometric-mean threshold, mp3-encoded silence measured
+~-52dB power below the tone bin) and an extraction floor of ≥48 *distinct* hashes (a 10s
+1kHz tone yields thousands of landmarks but only ~a dozen distinct hashes; the synthetic
+speech-shaped test audio yields hundreds). Consequence for consumers: jingles/sweepers
+that are pure sustained tones cannot be acoustically fingerprinted — by design, since
+their matches would be meaningless.
+
+**Open before this layer ships in `downloadPodcast`:** (1) the global-store provenance
+design (per-feed attribution + feed-scoped pruning, required 2026-07-19); (2) fingerprint
+serialization (the store codec only handles byte-layer entries); (3) the ear-check rule
+stands — synthetic-encode validation is *not* real-feed validation; matched spans on real
+podcast servings must be ear-verified (playbook step 5) before `FINGERPRINT`-sourced
+candidates from this layer get a confidence prior, and thresholds (20 landmarks, 1.5/12
+nats) are untested against real speech-over-music beds; (4) cost measurement on mobile —
+full-episode decode + STFT per match pass is new CPU the byte layer never spent.
+*(Items 1 and 2 landed same-day — next section. Items 3 and 4 remain open; the shipped
+integration is log-only and its log lines are the measurement instrument for 4.)*
+
+### Shipped: the global acoustic store (2026-07-19, log-only)
+
+The acoustic layer is wired into `downloadPodcast`, honoring the store-scoping design
+requirement above and the ear-check rule:
+
+- **Per-feed provenance on a shared store.** `downloadPodcast(acousticFingerprintStore=…,
+  feedId=…)` — the store is designed to be passed globally across every feed the consumer
+  follows, so each stored creative carries *attributions* (`feedId → provenance`) instead
+  of the byte layer's single provenance. `feedId` is any stable caller-chosen string (the
+  feed's canonical URL is the natural choice) and is mandatory with an acoustic store —
+  un-attributed evidence in a shared store can never be safely revoked. A new codec
+  (`tacita-afp` v1, `AcousticFingerprintStoreFile`) serializes the constellation
+  (hashes + anchor frames) plus attributions; merging unions attributions and upgrades
+  per-feed provenance (HUMAN_CONFIRMED never downgraded — same rule as the byte layer,
+  now applied per feed).
+- **Seeding**: applied diff cuts extract acoustic fingerprints from the removed ranges
+  (decoded from the pre-cut bytes, alongside the byte-layer extraction) and store them as
+  DIFF_PROVEN attributed to the downloading feed. `Tacita.confirmAcousticAd(file, store,
+  feedId, startMs, endMs)` records HUMAN_CONFIRMED confirmations; the degenerate
+  stationary-audio class (held tones — see the empirical lesson above) is rejected at
+  confirmation time rather than silently stored.
+- **Matching is log-only.** Recurrences of stored creatives in the output file are
+  reported to the log callback (creative id, attributions, matched span/landmarks, and
+  the pass's wall time — the instrument for the owed mobile-cost measurement) and emit
+  **no** `AdBoundaryCandidate`s and no confidence prior. Synthetic cross-encode
+  validation (jvmTest, jump3r re-encodes) is not real-feed validation; candidates wait
+  on ear-verified real-feed matches (playbook step 5).
+- **Clean-serving revocation is feed-scoped**, as the scoping design requires: a
+  verified-clean serving that matches a stored creative revokes *only the observing
+  feed's attribution*; the fingerprint is dropped only when no feed's evidence remains.
+  Pinned in tests: two feeds confirm one creative, feed A's clean serving leaves feed
+  B's confirmation standing.
+- Store failures never fail a download (same contract as the byte layer).
+
+**Open question recorded (2026-07-19):** after a feed's clean serving detaches its
+attribution, the creative still *log-matches* in that feed's future episodes off other
+feeds' attributions — harmless while log-only, but before candidates ship this needs a
+design: per-feed negative evidence ("feed X verified this clean") that suppresses that
+feed's candidates without touching other feeds, rather than mere attribution absence
+(absence must keep matching — it's indistinguishable from "feed never encountered it",
+the cross-feed payoff case). One semantic already decided (ghackett, 2026-07-19): **a
+later human confirmation in that feed overrides the tombstone** — consistent with the
+evidence hierarchy everywhere else in the library (a human ear deliberately confirming
+the creative as an ad, after the clean-serving observation, outranks the machine
+signal; acoustic matching also carries false-positive risk byte matching doesn't, so
+the tombstone itself may be wrong). Also still open: real-feed ear verification (blocks
+any confidence prior) and the threshold validation + cost measurement from the previous
+section.
+
 ## The aggressive candidate pass (2026-07-05, additive)
 
 `AdBoundaryDetector` is a read-only last pass over the final output file that emits

@@ -1,7 +1,60 @@
 # ChangeLog
 
+### v0.0.5 - Released 7/20/2026
+
+- Internal: **tests now run on native targets** — the test suite moved from `jvmTest`
+  to `commonTest`, so CI's linux/mingw/macos shards exercise the platform-varying
+  surface (`atomicMove` semantics, mingw filesystem behavior, `Dispatchers.IO` on
+  native) instead of compile-verifying it. The mp3 fixtures are embedded into generated
+  test code at build time (base64) since kotlin/native test binaries have no classpath
+  resources. Only the JLayer/jump3r-dependent tests stay jvm-only (the `Mp3Decoder`
+  digest pin — which verifies cross-platform bit-identical PCM — now runs everywhere;
+  the JLayer reference comparison split into `Mp3DecoderReferenceTest`). No production
+  code or API change
+
+- **Acoustic ad-fingerprint store** (opt-in): `Tacita.downloadPodcast` gains optional
+  `acousticFingerprintStore: Path` + `feedId: String` params. When provided (with
+  `cutAds`), tacita maintains a store of level-invariant acoustic fingerprints
+  (spectral-peak constellations over the decoded audio) that survive the per-episode
+  re-encoding and gain normalization Simplecast-class hosts apply — where byte matching
+  can never hit. Unlike the byte-layer `fingerprintStore` (kept per feed), one acoustic
+  store is designed to be shared globally across feeds: every stored creative carries
+  per-feed attributions (`feedId → provenance`), applied diff cuts auto-seed
+  `DIFF_PROVEN` fingerprints attributed to the downloading feed, and a verified-clean
+  serving revokes matching fingerprints for the observing feed only — never another
+  feed's confirmation (docs/ALGORITHM.md "Store scoping"). Matching is **log-only**:
+  recurrences are reported to the log callback (with match timing, feeding the owed
+  mobile-cost measurement) and emit no `AdBoundaryCandidate`s until real-feed matches
+  are ear-verified. Store failures never fail a download
+- **`Tacita.confirmAcousticAd(file, acousticFingerprintStore, feedId, startMs, endMs)`**
+  (new API): records a human-confirmed ad in the acoustic store as `HUMAN_CONFIRMED`
+  for that feed (merging with any existing attributions; never downgraded). Stationary
+  audio (silence, held tones) is rejected — its degenerate constellation would match
+  unrelated audio. Also new: `Tacita.acousticFingerprints` / `removeAcousticFingerprint`
+  (list / revoke across all feeds), and the public `AcousticFingerprintInfo` type
+
+- Internal: **acoustic fingerprinter core** (`AcousticFingerprinter` + `Fft`) — the
+  level-invariant matching layer over decoded PCM that the mp3-decoder groundwork existed
+  for: Hann STFT (1024/512 at 11.025kHz) → gain-invariant spectral-peak constellation →
+  Shazam-style landmark hashes, matched by per-fingerprint time-offset consensus. Pinned
+  in tests: a creative fingerprinted from one encode is found in an episode that embeds
+  the same audio through a different encoder run (different bitrate, sample rate and
+  gain — the Simplecast-class serving shape) and across independently-encoded stitched
+  segments, while degenerate audio (silence, held tones) is rejected at extraction. Not
+  yet wired into `Tacita.downloadPodcast` — store integration awaits the global-store
+  provenance design (docs/ALGORITHM.md). No public API or behavior change. New
+  jvmTest-only dependency: jump3r (pure-java LAME port, used as an in-test encoder for
+  cross-encode fixtures)
+
 ### v0.0.4 - Released 7/19/2026
 
+- Internal: **common-code mp3 decoder** (`Mp3Decoder` + `Mp3Tables`) — a pure-Kotlin port
+  of minimp3 (CC0; scalar path, float output, Layer III only) that runs on every KMP
+  target, verified bit-identical to the C decoder across MPEG-2 mono and MPEG-1
+  joint-stereo streams (`Mp3DecoderTest` pins the decoded-PCM digests). Groundwork for the
+  acoustic (level-invariant) ad-fingerprint layer — no public API or behavior change.
+  New jvmTest-only dependency: jlayer (independent reference decoder); new fixture:
+  `stereo.mp3`; new script: `scripts/port-minimp3-tables.py` (mechanical table extraction)
 - **Ad-creative fingerprint store** (opt-in): `Tacita.downloadPodcast` gains an optional
   `fingerprintStore: Path` param. When provided (with `cutAds`), tacita maintains a store of
   known ad-creative fingerprints at that path: every applied diff cut auto-seeds a
