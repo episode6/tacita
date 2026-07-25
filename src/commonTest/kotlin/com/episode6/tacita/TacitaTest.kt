@@ -290,6 +290,55 @@ class TacitaTest {
     assertThat(outputFile.readBytes(), name = "truncated copy must never be served").isEqualTo(contentA + contentB)
   }
 
+  @Test fun `rejects a duration-validated serving whose frames contradict the implied bitrate`() = runTest {
+    // the 2026-07-25 Conan field failure: injected fill can push a file's implied bitrate
+    // onto the NEXT standard rate — here 16kbps fixtures whose size aliases to 24kbps
+    // over the declared duration. The downloaded frames say 16k, so the "clean" copy must
+    // be discarded and the diff pipeline must decide instead.
+    val served = longContent()
+    val logLines = mutableListOf<String>()
+    // pinned probe validates by duration, the "clean" download fails the frame-bitrate
+    // check, then the diff pipeline's primary + reference downloads cut the ad
+    val engine = engine(listOf(served, served, contentA + adA + contentB, contentA + adB + contentB))
+    val tacita = Tacita.withClient(log = { logLines += it }) { HttpClient(engine) }
+
+    val states = tacita.downloadPodcast(
+      url = URL,
+      outputFile = outputFile,
+      referenceFile = referenceFile,
+      overwrite = false,
+      cutAds = true,
+      expectedDurationSeconds = durationImplying(served.size, bitrateBps = 24_000),
+    ).toList()
+
+    assertThat(requestCount).isEqualTo(4)
+    assertThat(logLines.filter { "not provably clean" in it }).hasSize(1)
+    assertThat(logLines.filter { "clean serving downloaded directly" in it }).isEmpty()
+    assertThat(states.filterIsInstance<DownloadState.CuttingAds>()).hasSize(1)
+    assertThat(outputFile.readBytes(), name = "the aliased copy must never be served").isEqualTo(contentA + contentB)
+  }
+
+  @Test fun `serves a duration-validated serving whose frames carry the implied bitrate`() = runTest {
+    val served = longContent()
+    val logLines = mutableListOf<String>()
+    val engine = engine(listOf(served, served)) // one probe, one download
+    val tacita = Tacita.withClient(log = { logLines += it }) { HttpClient(engine) }
+
+    val states = tacita.downloadPodcast(
+      url = URL,
+      outputFile = outputFile,
+      referenceFile = referenceFile,
+      overwrite = false,
+      cutAds = true,
+      expectedDurationSeconds = durationImplying(served.size, bitrateBps = 16_000),
+    ).toList()
+
+    assertThat(requestCount).isEqualTo(2)
+    assertThat(logLines.filter { "clean serving downloaded directly" in it }).hasSize(1)
+    assertThat(states.filterIsInstance<DownloadState.CuttingAds>()).isEmpty()
+    assertThat(outputFile.readBytes()).isEqualTo(served)
+  }
+
   @Test fun `seeds diff-proven fingerprints from applied cuts and flags their recurrence in later downloads`() = runTest {
     val fpStore = (dir / "ads.tacita-fp")
     val longContent = contentA + contentB + contentA + contentB // ~28.4s, keeps the ~7.3s break under the 25% cut guard
@@ -405,6 +454,20 @@ class TacitaTest {
       downloadPodcast(responses = listOf(contentA), overwrite = false, cutAds = false).toList()
     }.isInstanceOf(FileAlreadyExistsException::class)
   }
+
+  /** ~99s of 16kbps audio — big enough for the resolver's duration check (needs >= 60s). */
+  private fun longContent(): ByteArray {
+    var out = ByteArray(0)
+    repeat(7) { out += contentA + contentB }
+    return out
+  }
+
+  /** A declared duration whose implied bitrate for [bytes] duration-validates at [bitrateBps]. */
+  private fun durationImplying(bytes: Int, bitrateBps: Int): Long =
+    (60L..(bytes * 8L / bitrateBps + 60L)).first { duration ->
+      val impliedBps = bytes * 8.0 / duration
+      impliedBps >= bitrateBps * 0.999 && impliedBps <= bitrateBps * 1.015
+    }
 
   private fun engine(responses: List<ByteArray>): MockEngine = MockEngine {
     val body = responses[requestCount++]

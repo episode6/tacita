@@ -49,6 +49,17 @@ class CleanSourceResolverTest {
     val result = resolve(engine, durationSeconds = DURATION_SECONDS)
 
     assertThat(result.cleanSource?.contentLength).isEqualTo(CLEAN_BYTES)
+    // the caller must verify the downloaded frames actually carry the matched rate —
+    // fill can alias a smaller-rate file onto the next standard rate (2026-07-25)
+    assertThat(result.cleanSource?.requiredBitrateBps).isEqualTo(128_000)
+  }
+
+  @Test fun `a declared-bytes match requires no bitrate verification`() = runTest {
+    val engine = MockEngine { serve(CLEAN_BYTES) }
+
+    val result = resolve(engine, declaredBytes = CLEAN_BYTES, durationSeconds = DURATION_SECONDS)
+
+    assertThat(result.cleanSource?.requiredBitrateBps).isNull()
   }
 
   @Test fun `rejects a filled serving via the duration check and returns null when nothing else validates`() = runTest {
@@ -72,7 +83,9 @@ class CleanSourceResolverTest {
 
     val result = resolve(engine, durationSeconds = DURATION_SECONDS)
 
-    assertThat(result.cleanSource).isEqualTo(CleanSourceResolver.CleanSource(STATIC_URL, userAgent = null, contentLength = CLEAN_BYTES))
+    assertThat(result.cleanSource).isEqualTo(
+      CleanSourceResolver.CleanSource(STATIC_URL, userAgent = null, contentLength = CLEAN_BYTES, requiredBitrateBps = 128_000),
+    )
     assertThat(logLines.filter { "dai metadata" in it }.single()).isEqualTo(
       "CleanSourceResolver: dai metadata in resolved url: [m=[1478560,2682539], al=4170360, ab=128]"
     )

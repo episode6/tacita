@@ -38,6 +38,15 @@ internal class CleanSourceResolver(
     val userAgent: String?,
     /** The probed size; the downloaded file must match it (guards against truncation). */
     val contentLength: Long,
+    /**
+     * Non-null when validation rested on the implied-bitrate check (rather than the feed's
+     * declared byte size): the standard CBR rate (bps) the serving's size implied over the
+     * declared duration. The downloaded file's frames must actually carry this rate —
+     * 2026-07-25 field failure: a 128kbps Simplecast serving with ~26% injected fill
+     * implied 161.7kbps over the declared duration and validated as a clean 160kbps file
+     * (fill fraction ≈ the ratio between adjacent standard rates; see docs/ALGORITHM.md).
+     */
+    val requiredBitrateBps: Int? = null,
   )
 
   data class Resolution(
@@ -61,8 +70,8 @@ internal class CleanSourceResolver(
 
     fun validated(candidateUrl: String, userAgent: String?, probe: Downloader.ProbeResult?): CleanSource? {
       val length = probe?.contentLength ?: return null
-      if (!isCleanLength(length, declaredEnclosureBytes, expectedDurationSeconds)) return null
-      return CleanSource(candidateUrl, userAgent, length)
+      val match = cleanLengthMatch(length, declaredEnclosureBytes, expectedDurationSeconds) ?: return null
+      return CleanSource(candidateUrl, userAgent, length, requiredBitrateBps = match.impliedStandardBitrateBps)
     }
 
     val pinned = probeQuietly(url, userAgent = null)
@@ -119,20 +128,25 @@ internal class CleanSourceResolver(
   }
 }
 
-private fun isCleanLength(bytes: Long, declaredEnclosureBytes: Long?, expectedDurationSeconds: Long?): Boolean {
+/** A passing length validation; [impliedStandardBitrateBps] is null when declared bytes matched. */
+private data class LengthMatch(val impliedStandardBitrateBps: Int?)
+
+private fun cleanLengthMatch(bytes: Long, declaredEnclosureBytes: Long?, expectedDurationSeconds: Long?): LengthMatch? {
   declaredEnclosureBytes?.takeIf { it > 0 }?.let { declared ->
     // 0.5% covers ID3-tag variance between servings, capped well below one ad creative
     val tolerance = minOf(declared / 200, 100_000L).coerceAtLeast(4_096L)
-    if (abs(bytes - declared) <= tolerance) return true
+    if (abs(bytes - declared) <= tolerance) return LengthMatch(impliedStandardBitrateBps = null)
   }
   expectedDurationSeconds?.takeIf { it >= 60 }?.let { duration ->
     // a clean CBR file implies a standard mp3 bitrate plus a little ID3 overhead;
-    // injected fill pushes the implied rate well past it, truncation drops it below
+    // injected fill pushes the implied rate well past it, truncation drops it below.
+    // "past it" can land on the NEXT standard rate (2026-07-25 Conan field failure), so
+    // the matched rate must be verified against the downloaded file's actual frames
     val impliedBps = bytes * 8.0 / duration
     val nearest = STANDARD_MP3_BITRATES_BPS.minBy { abs(it - impliedBps) }
-    if (impliedBps >= nearest * 0.999 && impliedBps <= nearest * 1.015) return true
+    if (impliedBps >= nearest * 0.999 && impliedBps <= nearest * 1.015) return LengthMatch(impliedStandardBitrateBps = nearest)
   }
-  return false
+  return null
 }
 
 // tiers observed to receive the clean canonical: curl/wget/googlebot-style clients

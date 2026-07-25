@@ -6,6 +6,7 @@ import assertk.assertions.isCloseTo
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import assertk.assertions.isGreaterThan
+import assertk.assertions.isNull
 import com.episode6.tacita.systemFileSystem
 import com.episode6.tacita.testTempFile
 import okio.use
@@ -83,6 +84,35 @@ class Mp3SegmentParserTest {
     return systemFileSystem.openReadOnly(file).use { handle ->
       parser.scan(handle, windowBytes = windowBytes)
     }
+  }
+
+  @Test fun `reports the leading audio bitrate of real encodes`() {
+    assertThat(parser.leadingAudioBitrateBps(fixture("single.mp3"))).isEqualTo(16_000)
+    assertThat(parser.leadingAudioBitrateBps(fixture("stereo.mp3"))).isEqualTo(128_000)
+  }
+
+  @Test fun `file-handle bitrate read matches byte-array read`() {
+    val data = fixture("single.mp3")
+    val file = testTempFile("parser-test", data)
+
+    val fromFile = systemFileSystem.openReadOnly(file).use { handle ->
+      parser.leadingAudioBitrateBps(handle, windowBytes = 1 shl 12)
+    }
+
+    assertThat(fromFile).isEqualTo(parser.leadingAudioBitrateBps(data))
+  }
+
+  @Test fun `dominant rate wins when a leading tag frame is encoded at a different bitrate`() {
+    // an Info-style header frame at 16kbps followed by 80kbps audio (MPEG2/22050Hz:
+    // 16k → 52-byte frames, 80k → 261-byte frames)
+    val data = repeatFrame(count = 1, header = frameHeader(version = MPEG2, bitrateIndex = 2, sampleRateIndex = 0), lengthBytes = 52) +
+      repeatFrame(count = 5, header = frameHeader(version = MPEG2, bitrateIndex = 9, sampleRateIndex = 0), lengthBytes = 261)
+
+    assertThat(parser.leadingAudioBitrateBps(data)).isEqualTo(80_000)
+  }
+
+  @Test fun `non-mp3 data reports no bitrate`() {
+    assertThat(parser.leadingAudioBitrateBps(ByteArray(1024) { it.toByte() })).isNull()
   }
 
   // All fixtures are MPEG1/44.1kHz; the remaining tests cover the other frame formats
