@@ -29,7 +29,19 @@ Remaining:
 - **Field measurements still owed**: Acast player-tier reuse, cross-week creative
   recurrence (fingerprint shelf life), acoustic match-pass cost on mobile.
 
-## ~~1. Run tests on non-JVM targets~~ (done 2026-07-19)
+## 1. Follow-ups from the 2026-07-25 nine-feed sweep (docs/ALGORITHM.md)
+
+- ~~Close the bitrate-validation aliasing hole~~ (done 2026-07-25: the resolver records
+  which standard rate the duration check matched and tacita verifies the downloaded
+  file's frames actually carry it — else the copy is deleted and the diff pipeline
+  decides).
+- **Fix candidate-cap starvation**: `MAX_CANDIDATES` truncation is confidence-then-
+  earliest, so segment-heavy episodes (Bombcast 255, Rest Is History 493) lose every
+  candidate in the back of the file. Stratify the cap over time (or per source).
+- **Ear checks owed**: Conan's falsely-clean serving and SYSK's uncut Omny slots
+  (first SEGMENT_BOUNDARY validation against real injected fill).
+
+## ~~2. Run tests on non-JVM targets~~ (done 2026-07-19)
 
 The suite moved to `commonTest` (fixtures embedded as base64 via the
 `generateTestFixtures` gradle task; okio-based temp-file helpers; `runTest` instead of
@@ -38,24 +50,24 @@ and the jump3r-encoding acoustic tests (`AcousticFingerprinterTest`, `TacitaAcou
 — both depend on java-only codec libraries. Moving those needs pre-generated cross-encode
 fixtures checked in (or a native LAME port), which hasn't been worth it.
 
-## ~~2. Downloader: check HTTP status + direct tests~~ (done 2026-07-04)
+## ~~3. Downloader: check HTTP status + direct tests~~ (done 2026-07-04)
 
 `Downloader.downloadFile` now throws on non-2xx and deletes the partial file when a
 download fails mid-stream; `DownloaderTest` covers status handling, mid-download failure,
 missing Content-Length progress, parent directory creation, and the pinned user-agent.
 
-## ~~3. Reference promotion onto an existing .adref~~ (done 2026-07-04)
+## ~~4. Reference promotion onto an existing .adref~~ (done 2026-07-04)
 
 `TacitaImpl` now deletes an existing reference before `atomicMove` promotion (replaces on
 all platforms, not just posix), with a covering test in `TacitaTest`.
 
-## ~~4. Id3ChapterShifter unit tests~~ (done 2026-07-04)
+## ~~5. Id3ChapterShifter unit tests~~ (done 2026-07-04)
 
 `Id3ChapterShifterTest` covers v2.3 vs v2.4 size encoding, the bail-outs
 (unsynchronisation, extended header, unsupported versions, non-default frame format
 flags), chapters overlapping/inside the cut range, multiple cuts, and real byte offsets.
 
-## ~~5. Mp3SegmentParser edge cases + dead code~~ (done 2026-07-04)
+## ~~6. Mp3SegmentParser edge cases + dead code~~ (done 2026-07-04)
 
 MPEG2/MPEG2.5 frame parsing, the padding bit, and truncated-final-frame handling are now
 tested with synthetic frames; the dead `Downloader.fetchString` was deleted.

@@ -74,6 +74,37 @@ internal class Mp3SegmentParser {
   /** Byte offset of the first mp3 frame (skipping any ID3v2 header). */
   internal fun audioStart(data: ByteArray): Int = ArrayBytes(data).let { findNextFrame(it, id3v2Size(it)) ?: it.size }
 
+  fun leadingAudioBitrateBps(data: ByteArray): Int? = leadingAudioBitrateBps(ArrayBytes(data))
+
+  /**
+   * The dominant frame-header bitrate (bps) among the file's leading audio frames, or null
+   * when nothing parses as an mp3 frame. A CBR file reports its encode rate; sampling
+   * several frames keeps a leading Xing/Info frame written at a different rate from
+   * deciding. VBR files report an arbitrary rate — callers comparing against an expected
+   * CBR rate treat any disagreement as "not that rate", which is the correct answer for
+   * VBR too.
+   */
+  fun leadingAudioBitrateBps(handle: FileHandle, windowBytes: Int = DEFAULT_WINDOW_BYTES): Int? =
+    leadingAudioBitrateBps(WindowedFileBytes(handle, windowBytes))
+
+  private fun leadingAudioBitrateBps(data: Bytes): Int? {
+    var pos = findNextFrame(data, id3v2Size(data)) ?: return null
+    val counts = mutableMapOf<Int, Int>()
+    var sampled = 0
+    while (sampled < BITRATE_SAMPLE_FRAMES && pos + FRAME_HEADER_SIZE <= data.size) {
+      val frame = parseFrameHeader(data, pos)
+      if (frame == null) {
+        pos++
+        continue
+      }
+      if (pos + frame.lengthBytes > data.size) break // truncated final frame
+      counts[frame.bitrateBps] = (counts[frame.bitrateBps] ?: 0) + 1
+      sampled++
+      pos += frame.lengthBytes
+    }
+    return counts.maxByOrNull { it.value }?.key
+  }
+
   /**
    * Playback seconds at each byte [offsets] entry (the time of the frame containing the
    * offset; before the first frame → 0, past the last → total duration). Streams through
@@ -179,7 +210,7 @@ internal class Mp3SegmentParser {
 
   private data class Boundary(val byte: Int, val seconds: Double)
 
-  private data class FrameInfo(val lengthBytes: Int, val durationSeconds: Double)
+  private data class FrameInfo(val lengthBytes: Int, val durationSeconds: Double, val bitrateBps: Int)
 
   private fun findNextFrame(data: Bytes, from: Int): Int? {
     var pos = from
@@ -212,6 +243,7 @@ internal class Mp3SegmentParser {
     return FrameInfo(
       lengthBytes = samplesPerFrame / 8 * bitrate / sampleRate + padding,
       durationSeconds = samplesPerFrame.toDouble() / sampleRate,
+      bitrateBps = bitrate,
     )
   }
 
@@ -303,6 +335,7 @@ private class WindowedFileBytes(private val handle: FileHandle, private val wind
 
 private const val DEFAULT_WINDOW_BYTES = 1 shl 20
 private const val FRAME_HEADER_SIZE = 4
+private const val BITRATE_SAMPLE_FRAMES = 32
 private const val TAG_SEARCH_WINDOW = 200
 private const val TRAILING_FLUSH_MERGE_SECONDS = 2.0
 private const val MIN_TAG_FRAME_FILL_FRACTION = 0.10

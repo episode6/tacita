@@ -2,6 +2,17 @@
 
 ### v0.0.6-SNAPSHOT - Unreleased
 
+- **Clean-source discovery now verifies the served file's actual bitrate** when
+  validation rested on the implied-bitrate check (feed declares a duration but no usable
+  byte size). Field failure (2026-07-25, Conan/Simplecast — see docs/ALGORITHM.md): a
+  128kbps serving carrying ~26% injected fill implied ~161.7kbps over the declared
+  duration and validated as a clean 160kbps file, so ~7 minutes of ads were served as
+  "provably clean" and the diff never ran. Now the resolver records which standard rate
+  the duration check matched, and after download tacita reads the dominant frame-header
+  bitrate of the file's leading audio frames; a disagreement (or unparseable audio)
+  deletes the copy and falls back to the diff pipeline. Declared-byte-size validation is
+  unaffected. No API change (a new diagnostic log line reports the rejection)
+
 ### v0.0.5 - Released 7/20/2026
 
 - Internal: **tests now run on native targets** — the test suite moved from `jvmTest`

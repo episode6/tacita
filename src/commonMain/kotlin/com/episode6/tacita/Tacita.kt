@@ -427,7 +427,7 @@ private class TacitaImpl(
           downloader.downloadFile(url = clean.url, outputFile = outputFile, overwrite = overwrite, userAgent = clean.userAgent)
             .collect { emit(DownloadState.Downloading(outputFile, it)) }
           val size = fileSystem.metadata(outputFile).size
-          if (size == clean.contentLength) {
+          if (size == clean.contentLength && servesValidatedBitrate(outputFile, clean.requiredBitrateBps)) {
             log("Tacita: ${outputFile.name}: clean serving downloaded directly ($size bytes), no ad-cut needed")
             // a stored "creative" that appears in the publisher's own upload is show
             // content a human mis-confirmed (or a hash accident) — never keep it
@@ -442,9 +442,11 @@ private class TacitaImpl(
             )
             return@flow
           }
-          // a short read looks like a completed download; never serve a copy we can't
-          // verify — fall back to the diff pipeline below
-          log("Tacita: ${outputFile.name}: clean serving size mismatch (expected ${clean.contentLength}, got $size); falling back to diff")
+          if (size != clean.contentLength) {
+            // a short read looks like a completed download; never serve a copy we can't
+            // verify — fall back to the diff pipeline below
+            log("Tacita: ${outputFile.name}: clean serving size mismatch (expected ${clean.contentLength}, got $size); falling back to diff")
+          }
           fileSystem.delete(outputFile)
         }
       }
@@ -572,6 +574,31 @@ private class TacitaImpl(
     withContext(Dispatchers.IO) {
       acousticStoreFile.remove(acousticFingerprintStore, id)
     }
+
+  /**
+   * When clean-source validation rested on the implied-bitrate check, the downloaded
+   * frames must actually carry the standard rate it matched (2026-07-25 field failure:
+   * a 128kbps serving with ~26% injected fill implies ~160kbps over the declared
+   * duration and duration-validates as a clean 160k file — see docs/ALGORITHM.md).
+   * A disagreement (or unparseable audio) means the serving is not provably clean; the
+   * caller deletes the copy and the diff pipeline decides instead.
+   */
+  private fun servesValidatedBitrate(file: Path, requiredBitrateBps: Int?): Boolean {
+    if (requiredBitrateBps == null) return true
+    val actualBps = try {
+      fileSystem.openReadOnly(file).use { mp3SegmentParser.leadingAudioBitrateBps(it) }
+    } catch (t: Throwable) {
+      log("Tacita: ${file.name}: clean serving bitrate check failed to read the file: ${t.message}")
+      null
+    }
+    if (actualBps == requiredBitrateBps) return true
+    log(
+      "Tacita: ${file.name}: clean serving implied ${requiredBitrateBps / 1000}kbps over the declared duration " +
+        "but its frames carry ${actualBps?.let { "${it / 1000}kbps" } ?: "no parseable rate"}; " +
+        "not provably clean — falling back to diff",
+    )
+    return false
+  }
 
   // store maintenance never fails a download: it's an accuracy improvement, not a dependency
   private fun seedFingerprints(outputFile: Path, store: Path, fingerprints: List<StoredAdFingerprint>) {
