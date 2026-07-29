@@ -2,6 +2,9 @@
 
 ### v0.0.6-SNAPSHOT - Unreleased
 
+- Internal: added `project-icon.svg` (repo sidebar icon for the Collins session
+  manager). No production code or API change
+
 - **Clean-source discovery now verifies the served file's actual bitrate** when
   validation rested on the implied-bitrate check (feed declares a duration but no usable
   byte size). Field failure (2026-07-25, Conan/Simplecast — see docs/ALGORITHM.md): a
