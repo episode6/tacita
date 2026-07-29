@@ -1,0 +1,11 @@
+<!-- Tacita: a podcast waveform with the injected ad flattened to silence. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect x="2" y="2" width="124" height="124" rx="26" fill="#262320" stroke="#4a443c" stroke-width="4"/>
+  <g fill="#EDE9E1">
+    <rect x="16" y="40" width="12" height="48" rx="6"/>
+    <rect x="36" y="24" width="12" height="80" rx="6"/>
+    <rect x="80" y="28" width="12" height="72" rx="6"/>
+    <rect x="100" y="44" width="12" height="40" rx="6"/>
+  </g>
+  <rect x="54" y="61" width="20" height="6" rx="3" fill="#D97757"/>
+</svg>
