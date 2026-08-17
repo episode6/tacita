@@ -1,5 +1,27 @@
 # ChangeLog
 
+### v0.0.6 - Released 8/16/2026
+
+- Release artifacts are now signed with a dedicated RSA 4096 signing subkey
+  (`3EBBA2410EE1077E`) at SHA-512, instead of the release key's 2048-bit primary. The key
+  itself is unchanged — same fingerprint `44ECBAD7477AB9D83840B17230B38AEA76ADCF72`, same
+  identity — so `gpg --verify` names the same signer and every previously published
+  signature still verifies; only the subkey id differs. If verification reports a missing
+  public key, refresh your copy from `keyserver.ubuntu.com` or `keys.openpgp.org`
+- Internal: added `project-icon.svg` (repo sidebar icon for the Collins session
+  manager). No production code or API change
+
+- **Clean-source discovery now verifies the served file's actual bitrate** when
+  validation rested on the implied-bitrate check (feed declares a duration but no usable
+  byte size). Field failure (2026-07-25, Conan/Simplecast — see docs/ALGORITHM.md): a
+  128kbps serving carrying ~26% injected fill implied ~161.7kbps over the declared
+  duration and validated as a clean 160kbps file, so ~7 minutes of ads were served as
+  "provably clean" and the diff never ran. Now the resolver records which standard rate
+  the duration check matched, and after download tacita reads the dominant frame-header
+  bitrate of the file's leading audio frames; a disagreement (or unparseable audio)
+  deletes the copy and falls back to the diff pipeline. Declared-byte-size validation is
+  unaffected. No API change (a new diagnostic log line reports the rejection)
+
 ### v0.0.5 - Released 7/20/2026
 
 - Internal: **tests now run on native targets** — the test suite moved from `jvmTest`

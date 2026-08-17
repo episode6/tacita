@@ -123,6 +123,78 @@ candidates. Pod Save America episode 8923605 ("Trump's 4th Threesome", declared
   Chapter-heavy shows demonstrate the designed false-positive tradeoff: most of those 24
   markers are content chapters, not ads — skippable suggestions, never cut points.
 
+### 2026-07-25: nine-feed sweep across six hosts (probe harness, 0.0.6-SNAPSHOT)
+
+Goal: find ear-verification targets (uncut-ad candidates) among the latest episodes of
+popular feeds. JVM probe harness, `cutAds=true`, feed-declared metadata passed, fresh
+back-to-back references, all durations below from ffprobe. Hosts: Audioboom ×3,
+Simplecast ×2, Acast, Omny, Megaphone, Spreaker (the last three new to this doc).
+
+- **Audioboom's static fallback keeps working across shows**: No Such Thing As A Fish
+  8931676 (52,693,117 B, 3289.09s vs declared 3289), Pod Save America 8931928
+  (68,217,367 B, 4260.63s vs 4260) and Nextlander 8931502 (113,568,287 B, 7090.59s vs
+  7090) all resolved the leaked static copy and served it directly. None of the three
+  leaked `m=[…]` slots this time (consistent with per-show config above); all leaked
+  `al`/`ab`/`ao`.
+- **Spreaker is Audioboom-shaped** (new host — Giant Bombcast 950): its redirect chain
+  leaks the same-style DAI metadata (`al=8720796, ab=128, ao=597`) *and* a static
+  fallback, which matched the declared enclosure length **exactly** (139,533,344 B;
+  8720.77s vs declared 8721) → served clean with zero code changes.
+- **Acast's pinned tier is still the canonical stitch** (Blindboy 6a5ffdc4: served
+  60,573,006 B, 3785.80s vs declared 3785 → genuinely clean). Note the feed's
+  `enclosure length` (90,858,531) was simply wrong; validation passed on implied bitrate
+  (128.03k), which was correct *here* — but see the Conan aliasing below.
+- **Simplecast's bot-tier escape still works** (99% Invisible cd4620a7: `curl` serving
+  36,337,966 B vs declared 36,338,393 — 427 B under, bytes-validated; 2185.85s vs 2185).
+- **Bitrate validation has an aliasing hole — first observed false "clean"** (Conan
+  "Knife Porn" 19b16717, Simplecast): feed declares 1604s / 25,672,827 B (= an honest
+  128.06kbps). The pinned tier served **32,428,707 B**, whose implied bitrate over the
+  *declared* duration is 161.7kbps — within +1.1% of the 160k standard rate → validated
+  and logged `pinned-tier serving is already clean`. ffprobe: the file is a **128kbps**
+  encode with real duration **2026.79s** — ~423s (26.4%) of injected fill served as
+  "provably clean". The aliasing is structural: fill adding ≈ the ratio between adjacent
+  standard rates (160/128 − 1 = 25%) maps a filled file onto the next rate up. The
+  under-cut invariant held (nothing was cut), but the log claimed cleanliness it didn't
+  have, and no diff ran that might have cut the fill. **Fixed same day** (post-download
+  variant): the resolver records which standard rate the duration check matched
+  (`CleanSource.requiredBitrateBps`), and after download tacita reads the dominant
+  frame-header bitrate of the file's leading audio frames
+  (`Mp3SegmentParser.leadingAudioBitrateBps`, 32-frame sample so a stray Xing/Info frame
+  can't decide); disagreement or unparseable audio deletes the copy and falls back to
+  the diff pipeline. Field-validated the same day against the live serving: the same
+  probe still validated, the downloaded frames said 128k ≠ 160k, and the run fell back
+  to the diff — which returned `NoAdsFound` against a 2.5-hour-old promoted reference
+  (okhttp-tier fill still byte-identical after 2.5h; Simplecast stickiness outlasts the
+  separation that rotated Acast's fill in 2h). The ads stay (under-cut direction,
+  candidates intact) but the false "clean" is gone — which also matters for stores: a
+  false clean would have *pruned* fingerprint stores against a filled copy, deleting
+  genuine ad fingerprints present in the fill. Candidate clusters in the output at
+  0:53–1:31, 9:01–9:21, 15:14–18:14 and 31:51→end are the presumptive slots (ear check
+  pending).
+- **Omny fills the pinned tier and leaks no escape** (Stuff You Should Know "Selects:
+  Plant Migration" 2f29c2a4): declared 43,995,307 B / 2747s (an honest 128.1k); served
+  **51,913,940 B**, real duration **3242.06s** → **+495s of fill**. No `fallback_url`
+  leaked and no probe validated (every candidate rejected), the back-to-back reference
+  drew identical fill → `NoAdsFound`. First swept host with *no* discoverable clean
+  escape — accuracy depends entirely on reference age. Segment-boundary clusters at
+  16:25–17:57, 38:47–40:08 and 53:31–53:58 are the presumptive slots (ear check
+  pending).
+- **Megaphone bakes sticky fill into a 320kbps stitch** (new host — The Rest Is History
+  690): declared length 0 / 4745s; both back-to-back copies byte-identical at
+  194,860,085 B, real duration 4869.64s → **+125s of fill in every request**, diff
+  blind, no escape validated. Its 320k encode also makes the tag-frame discriminator
+  misfire badly: 493 SEGMENT_BOUNDARY candidates, many one frame (~26ms granularity,
+  261ms apart) from each other — the signal is noise-dominated on this host.
+- **The 64-candidate cap starves the back of long episodes**: truncation keeps
+  highest-confidence-then-earliest, and SEGMENT_BOUNDARY candidates all carry the same
+  prior, so segment-heavy episodes lose every marker after the first 64 (Bombcast:
+  255→64, last kept candidate 33:07 of 2:25:21; Rest Is History: 493→64, last kept
+  10:06 of 1:21:10). A time-stratified or per-source cap would preserve coverage.
+
+Ear checks owed from this sweep (playbook step 5): Conan's falsely-validated "clean"
+serving (expect ads at the cluster times) and SYSK's uncut slots (would be the first
+ear-validation of SEGMENT_BOUNDARY candidates against real injected fill).
+
 ## Dead ends (each looked correct in byte analysis)
 
 ### #1 — Segment-length classification (shipped briefly, reverted)
@@ -180,7 +252,13 @@ the injected ads. Identical copies → `NoAdsFound`.
   must sit within [-0.1%, +1.5%] of a standard CBR mp3 bitrate (VBR files simply never
   validate and fall through to the diff). After download the file size must equal the
   probed Content-Length (a short read looks like a completed download); mismatch deletes
-  the copy and falls back to the diff pipeline. No expectations passed → resolution is
+  the copy and falls back to the diff pipeline. When validation rested on the
+  implied-bitrate check (not declared bytes), the downloaded file's dominant frame-header
+  bitrate must additionally equal the standard rate the check matched
+  (`Mp3SegmentParser.leadingAudioBitrateBps`, a 32-frame sample so a stray Xing/Info
+  frame can't decide) — added 2026-07-25 after fill aliased a 128k serving onto the 160k
+  rate (see the nine-feed sweep); disagreement or unparseable audio deletes the copy and
+  falls back to the diff. No expectations passed → resolution is
   skipped entirely and behavior is unchanged.
 
 - **Alignment is rsync-style, content-based** (`AdCutter.AnchorIndex`): the primary's
@@ -700,7 +778,11 @@ desktop and on short episodes, but long episodes yield zero, silently":
   episodes take the clean-source path; a large episode on a diff-path host (e.g. Acast)
   would hit the same Android ceiling — likely as a failed download rather than a silent
   no-op, since the cutter is not guarded. Streaming the diff is a larger lift (the
-  rolling-hash diff wants random access); deferred until observed.
+  rolling-hash diff wants random access); deferred until observed. **Observed 2026-07-25
+  (desktop JVM, not Android)**: The Rest Is History's 2×194,860,085 B diff-path pair
+  threw `OutOfMemoryError` out of the download flow under a default 512MB test heap —
+  confirming the failure mode is a loud failed download, not a silent no-op. Completed
+  normally at a 6GB heap (`NoAdsFound`).
 
 ## MP3-level facts worth keeping
 
